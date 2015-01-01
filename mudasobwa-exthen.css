@@ -1,0 +1,21 @@
+:host {
+  display: block;
+  border: solid 1px transparent;
+}
+
+figure, figcaption { background-color: #f9f9f9; margin: 0; padding: 0; }
+
+figure {
+  display: table;
+}
+
+figcaption {
+  display: table-caption;
+  caption-side: bottom;
+  border: 1px solid #eee;
+  border-top: none;
+  padding: 0.2em 1em;
+  color: #999;
+  font-size: 14px;
+  font-family: Ubuntu, Verdana, Arial, sans-serif;
+}

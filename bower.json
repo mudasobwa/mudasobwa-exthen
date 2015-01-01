@@ -1,0 +1,19 @@
+{
+  "name": "mudasobwa-exthen",
+  "version": "0.0.1",
+  "keywords": [
+    "seed",
+    "polymer",
+    "web-components",
+    "image",
+    "exif"
+  ],
+  "main": "mudasobwa-exthen.html",
+  "dependencies": {
+    "polymer": "Polymer/polymer#^0.5.1",
+    "exif-js": "jseidelin/exif-js"
+  },
+  "devDependencies": {
+    "web-component-tester": "Polymer/web-component-tester#^2.0.0"
+  }
+}

@@ -1,0 +1,577 @@
+<link rel="import" href="../polymer/polymer.html">
+<script src="../exif-js/exif.js"></script>
+
+<!--
+Web component provides easy handling of GEO-tagged images.
+
+There is no way to retrieve EXIF tags from an image already loaded on the page.
+
+`mudasobwa-exthen` (the name is a pun for exif) handles image loading in the
+following way:
+
+- once created, it draws a canvas with configurable throbber on it;
+- the original image is being loaded asynchronously;
+- once the image is loaded, EXIF is extracted from it and `mudasobwa-exthen-exif`
+  event is being fired;
+- EXIF is processed, timestamp and description are extracted from it and
+  `mudasobwa-exthen-timestamp` and `mudasobwa-exthen-comment` are fired;
+- if GEO tags are presented in the image, those are extracted and
+  `mudasobwa-exthen-geotagged` is being fired;
+- whether `geo` attribute is set to true, the ajax request to OpenStreetMap’s
+  reverse geolocation service is performed;
+- on responce there is `mudasobwa-exthen-address` fired.
+
+According to `geo`, `timestamp` and `comment` attribute settings, the address/time are
+drawn on the image (rotated -90°, in the south-east corner) and/or comment
+is printed within component’s `content`.
+
+![Image drawn with and without image EXIF data](compare.png)
+
+This is how it looks:
+
+![GEO tags and date are drawn on image surface](geo.png)
+
+##### Example
+
+    <mudasobwa-exthen
+        src="test/image.jpg"
+        geo="true"              &lt;!-- will draw GEO --&gt;
+        timestamp="false"       &lt;!-- will NOT draw GEO --&gt;
+        comment="true"          &lt;!-- will append ImageDescription tag content to `content` --&gt;
+        throbColor="[0,0,128]"  &lt;!-- will draw throbber in navy color --&gt;
+    >
+    </mudasobwa-exthen>
+
+@element mudasobwa-exthen
+@blurb Element providing lazy image loading, GEO-tags extracting and more.
+@status alpha
+@homepage http://polymerlabs.github.io/mudasobwa-exthen
+-->
+<polymer-element name="mudasobwa-exthen"
+                 attributes="src geo timestamp comment
+                             throbWidth throbHeight throbType throbColor
+                             fillFont fillColor fillStroke fillShadow">
+
+  <template>
+    <link rel="stylesheet" href="mudasobwa-exthen.css" />
+
+    <figure>
+      <div id="container" style="width:{{ throbWidth }}px;height:{{ throbHeight }}px"></div>
+      <figcaption id="caption">
+        <content id="content"></content>
+      </figcaption>
+    </figure>
+
+  </template>
+
+  <script>
+
+    Polymer({
+      /**
+       * The `src` attribute sets an image original source
+       *
+       * @attribute src
+       * @type string
+       */
+      src: null,
+
+      /**
+       * `geo` is an attribute that denotes whether GEO should be extracted from
+       *       an image and printed on canvas.
+       *
+       * @attribute geo
+       * @type bool
+       * @default true
+       */
+      geo: true,
+
+      /**
+       * `timestamp` is an attribute that denotes whether timestamp should be
+       *       extracted from an image and printed on canvas.
+       *
+       * @attribute timestamp
+       * @type bool
+       * @default true
+       */
+      timestamp: true,
+
+      /**
+       * `comment` is an attribute that denotes whether comment should be
+       *       extracted from an image and printed inside content tag.
+       *
+       * @attribute comment
+       * @type bool
+       * @default true
+       */
+      comment: true,
+
+      /**
+       * `throbber` is a property that holds throbber showing while image is being loaded.
+       *
+       * @property throbber
+       * @type Object
+       * @default null
+       */
+      throbber: null,
+
+      /**
+       * `throbType` is an attribute that denotes whether throbber should be drawn
+       *     with balls or strips.
+       *
+       * @attribute throbType
+       * @type string 'balls' | 'stripes'
+       * @default 'balls'
+       */
+      throbType: "balls",
+
+      /**
+       * `throbColor` is an attribute that denotes the color, throbber should be drawn with.
+       *
+       * @attribute throbColor
+       * @type Array
+       * @default [0x40,0x40,0x40]
+       */
+      throbColor: [0x40,0x40,0x40],
+
+      /**
+       * `throbWidth` is an attribute that denotes throbber width.
+       *
+       * @attribute throbWidth
+       * @type Integer
+       * @default 600
+       */
+      throbWidth: 600,
+
+      /**
+       * `throbHeight` is an attribute that denotes throbber height.
+       *
+       * @attribute throbHeight
+       * @type Integer
+       * @default 400
+       */
+      throbHeight: 400,
+
+      /**
+       * `fillFont` is an attribute that denotes font css for text,
+       *      that will be drawn on canvas for GEO/Date.
+       *
+       * @attribute fillFont
+       * @type string
+       * @default '12px Ubuntu, Verdana, Arial, sans-serif'
+       */
+      fillFont: '14px Ubuntu, Verdana, Arial, sans-serif',
+
+      /**
+       * `fillColor` is an attribute that denotes color css for text,
+       *      that will be drawn on canvas for GEO/Date.
+       * Setting this attribute to `null` will switch filling off.
+       *
+       * @attribute fillColor
+       * @type string
+       * @default 'rgba(255, 255, 255, 0.9)'
+       */
+      fillColor: 'rgba(255, 255, 255, 0.9)',
+
+      /**
+       * `fillStroke` is an attribute that denotes color css for text stroke,
+       *      that will be drawn on canvas for GEO/Date.
+       *
+       * @attribute fillStroke
+       * @type string
+       * @default 'rgba(0, 0, 0, 1)'
+       */
+      fillStroke: 'rgba(0, 0, 0, 1)',
+
+      /**
+       * `fillShadow` is an attribute that denotes width of shadow for text stroke,
+       *      that will be drawn on canvas for GEO/Date.
+       *
+       * @attribute fillShadow
+       * @type Integer
+       * @default 7
+       */
+      fillShadow: 7,
+
+      /**
+       * Standard `ready` handler. Creates throbber and passes control back to
+       *    main thread, scheduling `loadImg` for actual image loading.
+       *
+       * @method ready
+       */
+      ready: function() {
+        // More info: http://www.polymer-project.org/docs/polymer/polymer.html#lifecyclemethods
+        this.throbber = new this.Throbber(this.$.container, this.throbType, this.throbColor);
+
+        // pass control to the main thread to avoid lock on image loading
+        setTimeout(function(self) { self.loadImg(self.throbber, self.$.container); }, 100, this);
+      },
+
+      /**
+       * Huge spaghetti-like codepiece which actually loads an image and fires events.
+       *
+       * @method loadImg
+       * @param {Object} the throbber handler (to call `stop()` on when the actual image is loaded)
+       * @param {Object} container to draw canvas for image on
+       */
+      loadImg: function(throbber, container) {
+        if (!this.src) {
+          console.warn("Mandatory src attribute is not set within mudasobwa-exthen id#" + this.id);
+          return false;
+        }
+
+        var self = this;
+        var img = new Image();
+        var http = new XMLHttpRequest();
+        http.open("GET", this.src, true);
+        http.responseType = "blob";
+
+        http.onload = function() {
+          if (this.status === 200) {
+            img.onload = function() {
+                throbber.stop();
+
+                var c = document.createElement('canvas');
+                container.style.width = (c.width = img.width) + 'px';
+                container.style.height = (c.height = img.height) + 'px';
+                var ctx = c.getContext('2d');
+                ctx.font = self.fillFont;
+                ctx.fillStyle = self.fillColor;
+                ctx.strokeStyle = self.fillStroke;
+                ctx.shadowColor = "black";
+                ctx.shadowBlur = self.fillShadow;
+                ctx.lineWidth = 1;
+                ctx.drawImage(img, 0, 0);
+                container.appendChild(c);
+
+                EXIF.getData(img, function() {
+                  self.fireExif(EXIF.getAllTags(img));
+
+                  // retrieve timestamp from image
+                  var timestampOK = false;
+                  var timestamp = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp');
+                  if (timestamp) {
+                    timestamp = timestamp.split(' ');
+                    var tDate = timestamp[0].replace(/[:\/.,]/g, '-');
+                    var tTime = timestamp[1];
+                    timestamp = tDate;
+                    timestampOK = true;
+                    self.fireTimestamp(tDate, tTime);
+                  }
+
+                  // retrieve geolocation from image
+                  var geoOK = false;
+                  var lat = EXIF.getTag(this, "GPSLatitude");
+                  var lon = EXIF.getTag(this, "GPSLongitude");
+                  var alt = EXIF.getTag(this, "GPSAltitude");
+
+                  if (lat && lat.constructor === Array && lon && lon.constructor === Array) { // GEO is presented
+                    var sth = ('S' == EXIF.getTag(this, "GPSLatitudeRef"));
+                    var wst = ('W' == EXIF.getTag(this, "GPSLongitudeRef"));
+
+                    // 53°20′18″N,37°5′18″E
+                    var latitude = '' + lat[0] + '°' + lat[1] + '′' + lat[2] + '″' + (sth ? 'S' : 'N');
+                    lat = lat[0] + lat[1]/60.0 + lat[2]/3600.0;
+                    if (sth) { lat = -lat; }
+                    var longitude = '' + lon[0] + '°' + lon[1] + '′' + lon[2] + '″' + (wst ? 'W' : 'E');
+                    lon = lon[0] + lon[1]/60.0 + lon[2]/3600.0;
+                    if (wst) { lon = -lon; }
+
+                    if (alt && '1' == EXIF.getTag(this, "GPSAltitudeRef")) { alt = -alt; }
+
+                    geoOK = true;
+                    self.fireGeotagged(lat, lon, alt, latitude, longitude);
+                  }
+
+                  // retrieve comment from image
+                  var commentOK = false;
+                  var comment = EXIF.getTag(this, 'ImageDescription');
+
+                  if (comment && comment.length > 0) { // byte array ⇒ utf8
+                    var i = 0;
+                    var c0 = c1 = c2 = c3 = 0;
+                    var result = '';
+
+                    while( i < comment.length ) {
+                      c0 = comment.charCodeAt(i)&0xff;
+
+                      if( c0 < 128 ) {
+                        result += String.fromCharCode(c0);
+                        i++;
+                      } else if( (c0 > 191) && (c0 < 224) ) {
+                        if( i+1 >= comment.length )
+                            throw "Bad UTF-8 content in ImageDescription. Skipping...";
+                        c2 = comment.charCodeAt(i+1)&0xff;
+                        result += String.fromCharCode( ((c0&31)<<6) | (c2&63) );
+                        i+=2;
+                      } else {
+                        if( i+2 >= comment.length  || i+1 >= comment.length )
+                            throw "Bad UTF-8 content in ImageDescription. Skipping...";
+                        c2 = comment.charCodeAt(i+1)&0xff;
+                        c3 = comment.charCodeAt(i+2)&0xff;
+                        result += String.fromCharCode( ((c0&15)<<12) | ((c2&63)<<6) | (c3&63) );
+                        i+=3;
+                      }
+                    }
+
+                    if (result && result.length > 0) {
+                      comment = result;
+                      commentOK = true;
+                      self.fireComment(comment);
+                    }
+                  } else if (self.$.content.children.length === 0) {
+                    self.$.caption.style.display = 'none';
+                  }
+
+                  var needTimestamp = (timestampOK && self.timestamp && (self.timestamp === true || self.timestamp === 'true' || self.timestamp === 'yes'));
+
+                  if (geoOK && self.geo && (self.geo === true || self.geo === 'true' || self.geo === 'yes')) { // stamp location
+                    // http://nominatim.openstreetmap.org/reverse?format=json&lat=52.5487429714954&lon=-1.81602098644987&zoom=18&addressdetails=1
+                    var nominatim = "http://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + lat + "&lon=" + lon + "&zoom=18&addressdetails=1";
+                    var http = new XMLHttpRequest();
+                    http.open("GET", nominatim, true);
+                    http.responseType = "json";
+
+                    http.onload = function() {
+                      if (this.status === 200) {
+                        this.response.time = EXIF.getTag(this, 'GPSDateStamp');
+                        self.fireAddress(this.response);
+                        var address = this.response.address.country || 'World';
+                        if (this.response.address.city || this.response.address.town) {
+                          address += ', ' + (this.response.address.city || this.response.address.town);
+                        }
+                        if (this.response.address.street || this.response.address.road || this.response.address.pedestrian) {
+                          address += ', ' + (this.response.address.street || this.response.address.road || this.response.address.pedestrian);
+                        }
+                        if (this.response.address.house_number) address += ', ' + this.response.address.house_number;
+
+                        if (needTimestamp) {
+                          address += '  ⌚' + timestamp;
+                        }
+                        ctx.save();
+                        ctx.translate(c.width, c.height);
+                        ctx.rotate(- Math.PI / 2);
+                        ctx.strokeText(address, c.height - ctx.measureText(address).width - 6, -6);
+                        ctx.shadowBlur = 0;
+                        ctx.fillText(address, c.height - ctx.measureText(address).width - 6, -6);
+                        ctx.restore();
+                      }
+                    };
+                    http.send();
+                  } else if (needTimestamp) {
+                    ctx.save();
+                    ctx.translate(c.width, c.height);
+                    ctx.rotate(- Math.PI / 2);
+                    ctx.strokeText('  ⌚' + timestamp, c.height - ctx.measureText(address).width - 6, -6);
+                    ctx.fillText('  ⌚' + timestamp, c.height - ctx.measureText(address).width - 6, -6);
+                    ctx.restore();
+                  }
+
+                  if (commentOK && self.comment && (self.comment === true || self.comment === 'true' || self.comment === 'yes')) { // show user comment from EXIF
+                    var p = document.createElement('p');
+                    p.appendChild(document.createTextNode(comment));
+                    self.$.caption.appendChild(p);
+                  }
+
+                });
+            };
+            img.src = URL.createObjectURL(http.response);
+          }
+        };
+        http.send();
+      },
+
+      /**
+       * The `Throbber` method will create a throbber. Used internally by `ready` handler.
+       *
+       * Code is gratefully stolen from
+       *     http://ablog.gawley.org/2009/05/randomness-throbbers-and-tag.html
+       *     and adopted for use inside polymer element.
+       *
+       * @method Throbber
+       * @param {Integer} id of the element to embed throbber into.
+       */
+      Throbber: function(container, throbType, throbColor) {
+        // prepare canvas
+        this.t = container;
+        this.c = document.createElement('canvas');
+        this.c.width = parseInt(this.t.style.width); // offsetWidth;
+        this.c.height = parseInt(this.t.style.height); // offsetHeight;
+        this.t.appendChild(this.c);
+
+        this.options = {
+          speedMS: 100,
+          center: Math.min(this.c.width, this.c.height) >> 2,
+          thickness: Math.min(this.c.width, this.c.height) >> 6,
+          spokes: Math.min(this.c.width, this.c.height) >> 3,
+          color: throbColor,
+          style: throbType
+        };
+        this.throb = function() {
+          var ctx = this.c.getContext("2d");
+          ctx.translate(this.c.width/2, this.c.height/2);
+          var w = Math.floor(Math.min(this.c.width,this.c.height)/2);
+          var self = this;
+          var o = self.options;
+          var draw = function() {
+            ctx.clearRect(-self.c.width/2,-self.c.height/2,self.c.width,self.c.height)
+            ctx.restore();
+            ctx.shadowOffsetX = ctx.shadowOffsetY = 1;
+            ctx.shadowBlur = 2;
+            ctx.shadowColor = "rgba(220, 220, 220, 0.5)";
+            for (var i = 0; i < o.spokes; i++) {
+              r = 255-Math.floor((255-o.color[0]) / o.spokes * i);
+              g = 255-Math.floor((255-o.color[1]) / o.spokes * i);
+              b = 255-Math.floor((255-o.color[2]) / o.spokes * i);
+              ctx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+
+              if(o.style == "balls") {
+                ctx.beginPath();
+                ctx.moveTo(w,0)
+                ctx.arc(w-Math.floor(Math.PI*2*w/o.spokes/3),0,Math.floor(Math.PI*2*w/o.spokes/3),0,Math.PI*2,true);
+                ctx.fill();
+              } else {
+                ctx.fillRect(o.center, -Math.floor(o.thickness/2), w-o.center, o.thickness);
+              }
+              ctx.rotate(Math.PI/(o.spokes/2));
+              if (i == 0) {
+                ctx.save();
+              }
+            }
+          };
+          draw();
+          this.timer = setInterval(draw,this.options.speedMS);
+        };
+        this.stop = function() {
+          clearInterval(this.timer);
+          this.c.getContext("2d").clearRect(-this.c.width/2,-this.c.height/2,this.c.width,this.c.height);
+          this.t.removeChild(this.c);
+        };
+
+        this.throb();
+      },
+
+      /**
+       * The `mudasobwa-exthen-exif` event is fired whenever the
+       *     exif for the image was successfully loaded.
+       *
+       * @event mudasobwa-exthen-exif
+       * @param {Object} detail
+       *   @param {string} detail.tags all the exif tags.
+       */
+
+      /**
+       * The `fireExif` method will fire the `mudasobwa-exthen-exif` event
+       *
+       * @method fireExif
+       */
+      fireExif: function(tags) {
+        this.fire('mudasobwa-exthen-exif', { tags: tags });
+      },
+
+      /**
+       * The `mudasobwa-exthen-address` event is fired whenever the
+       *     address for the image were successfully loaded.
+       *
+       * @event mudasobwa-exthen-address
+       * @param {Object} detail
+       *   @param {string} detail.address the address object.
+       *   @param {string} detail.display the human readable display name.
+       *   @param {object} detail.geo latitude and longitude.
+       *   @param {object} detail.osm OpenStreetMap specifics.
+       */
+
+      /**
+       * The `fireAddress` method will fire the `mudasobwa-exthen-address` event
+       *
+       * @method fireAddress
+       */
+      fireAddress: function(response) {
+        this.fire('mudasobwa-exthen-address', {
+          address: response.address,
+          display: response.display_name,
+          geo: {
+            lat: response.lat,
+            lon: response.lon
+          },
+          osm: {
+            id: response.osm_id,
+            type: response.osm_type,
+            place: response.place_id,
+            license: response.license
+          },
+          time: response.time
+        });
+      },
+
+      /**
+       * The `mudasobwa-exthen-geotagged` event is fired whenever the
+       *     geotags for the image were successfully loaded.
+       *
+       * @event mudasobwa-exthen-geotagged
+       * @param {Object} detail
+       *   @param {string} detail.lat the latitude.
+       *   @param {string} detail.lon the longitude.
+       *   @param {string} detail.alt the altitude.
+       *   @param {string} detail.latitude the human-readable string for latitude.
+       *   @param {string} detail.longitude the human-readable string for longitude.
+       *   @param {string} details.links prepared links to show the place in different map visualizers.
+       */
+
+      /**
+       * The `fireGeotagged` method will fire the `mudasobwa-exthen-geotagged` event
+       *
+       * @method fireGeotagged
+       */
+      fireGeotagged: function(lat, lon, alt, latitude, longitude) {
+        this.fire('mudasobwa-exthen-geotagged', {
+          lat: lat, lon: lon, alt: alt,
+          latitude: latitude, longitude: longitude,
+          links: {
+            osm: 'https://www.openstreetmap.org/#map=18/' + lat + '/' + lon,
+            google: 'https://www.google.com/maps/place/' + latitude + '+' + longitude
+          }
+        });
+      },
+
+      /**
+       * The `mudasobwa-exthen-geotagged` event is fired whenever the
+       *     timestamp for the image were successfully loaded.
+       *
+       * @event mudasobwa-exthen-timestamp
+       * @param {Object} detail
+       *   @param {string} detail.date the date.
+       *   @param {string} detail.time the time.
+       */
+
+      /**
+       * The `fireTimestamp` method will fire the `mudasobwa-exthen-timestamp` event
+       *
+       * @method fireTimestamp
+       */
+      fireTimestamp: function(d, t) {
+        this.fire('mudasobwa-exthen-timestamp', { date: d, time: t, datetime: new Date(d + ' ' + t) });
+      },
+
+      /**
+       * The `mudasobwa-exthen-comment` event is fired whenever the
+       *     comment for the image were successfully loaded.
+       *
+       * @event mudasobwa-exthen-comment
+       * @param {Object} detail
+       *   @param {string} detail.comment the comment.
+       */
+
+      /**
+       * The `fireComment` method will fire the `mudasobwa-exthen-comment` event
+       *
+       * @method fireComment
+       */
+      fireComment: function(comment) {
+        this.fire('mudasobwa-exthen-comment', { comment: comment });
+      }
+
+    });
+
+  </script>
+
+</polymer-element>
