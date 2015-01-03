@@ -14,15 +14,15 @@ following way:
 - once the image is loaded, EXIF is extracted from it and `mudasobwa-exthen-exif`
   event is being fired;
 - EXIF is processed, timestamp and description are extracted from it and
-  `mudasobwa-exthen-timestamp` and `mudasobwa-exthen-comment` are fired;
+  `mudasobwa-exthen-timestamp` and `mudasobwa-exthen-description` are fired;
 - if GEO tags are presented in the image, those are extracted and
   `mudasobwa-exthen-geotagged` is being fired;
 - whether `geo` attribute is set to true, the ajax request to OpenStreetMap’s
   reverse geolocation service is performed;
 - on responce there is `mudasobwa-exthen-address` fired.
 
-According to `geo`, `timestamp` and `comment` attribute settings, the address/time are
-drawn on the image (rotated -90°, in the south-east corner) and/or comment
+According to `format` attribute setting, the address/time are
+drawn on the image (rotated -90°, in the south-east corner) and/or description
 is printed within component’s `content`.
 
 ![Image drawn with and without image EXIF data](compare.png)
@@ -35,9 +35,6 @@ This is how it looks:
 
     <mudasobwa-exthen
         src="test/image.jpg"
-        geo="true"              &lt;!-- will draw GEO --&gt;
-        timestamp="false"       &lt;!-- will NOT draw GEO --&gt;
-        comment="true"          &lt;!-- will append ImageDescription tag content to `content` --&gt;
         throbColor="[0,0,128]"  &lt;!-- will draw throbber in navy color --&gt;
     >
     </mudasobwa-exthen>
@@ -49,8 +46,8 @@ This is how it looks:
 -->
 <polymer-element name="mudasobwa-exthen"
                  attributes="src
-                             latitude longitude altitude timestamp caption description
-                             needGeo needTimestamp needDescription
+                             gypsy timestamp caption description
+                             format
                              autoRedraw
                              throbWidth throbHeight throbType throbColor
                              fillFont fillColor fillStroke fillShadow">
@@ -61,7 +58,7 @@ This is how it looks:
     <figure>
       <div id="container" style="width:{{ throbWidth }}px;height:{{ throbHeight }}px"></div>
       <figcaption id="caption">
-        <template if="{{ needDescription }}">
+        <template if="{{ description }}">
           <p>{{ description }}</p>
         </template>
 
@@ -83,28 +80,21 @@ This is how it looks:
       src: null,
 
       /**
-      * The `latitude` attribute gets/sets a latitude where the photo was taken
+      * The `gypsy` attribute gets/sets a geo tags aka latitude, longitude and altitude
       *
-      * @attribute latitude
-      * @type float
+      * @attribute gypsy
+      * @type string | array<float>
       */
-      latitude: null,
+      gypsy: null,
 
       /**
-      * The `longitude` attribute gets/sets a longitude where the photo was taken
+      * The `format` attribute gets/sets a format for the text drawn on image canvas
       *
-      * @attribute longitude
-      * @type float
+      * @attribute format
+      * @type string
+      * @default '{caption} ✉ {address} ⌚ {date}'
       */
-      longitude: null,
-
-      /**
-      * The `altitude` attribute gets/sets a altitude where the photo was taken
-      *
-      * @attribute altitude
-      * @type float
-      */
-      altitude: null,
+      format: '{caption} ✉ {address} ⌚ {date}',
 
       /**
       * The `timestamp` attribute gets/sets a time when the photo was taken
@@ -129,36 +119,6 @@ This is how it looks:
       * @type string
       */
       description: null,
-
-      /**
-       * `needGeo` is an attribute that denotes whether GEO should be extracted from
-       *       an image and printed on canvas.
-       *
-       * @attribute needGeo
-       * @type bool
-       * @default true
-       */
-      needGeo: true,
-
-      /**
-       * `needTimestamp` is an attribute that denotes whether needTimestamp should be
-       *       extracted from an image and printed on canvas.
-       *
-       * @attribute needTimestamp
-       * @type bool
-       * @default true
-       */
-      needTimestamp: true,
-
-      /**
-       * `needDescription` is an attribute that denotes whether needDescription should be
-       *       extracted from an image and printed inside content tag.
-       *
-       * @attribute needDescription
-       * @type bool
-       * @default true
-       */
-      needDescription: true,
 
       /**
       * `throbber` is a property that holds throbber showing while image is being loaded.
@@ -274,7 +234,9 @@ This is how it looks:
       created: function() {
         this.ctx = null; // context, sizes etc
         this.ctxSize = {};
-        this.geo = {};
+        this.geoData = {};
+        this.timeData = {};
+        this.address = null;
       },
 
       /**
@@ -286,31 +248,42 @@ This is how it looks:
       * @param {string} neu the new value of the attribute
       */
       attributeChanged: function(attr, old, neu) {
+        var self = this;
         switch (attr) {
           case 'autoRedraw':
             break;
-          case 'latitude':
-            // 53°20′18″N,37°5′18″E
-            var deg = Math.floor(neu);
-            var min = Math.floor((neu - deg) * 60);
-            var sec = Math.floor((neu - deg - min) * 3600);
-            self.geo.latitude = '' + deg + '°' + min + '′' + sec + '″' + (neu != -neu ? 'S' : 'N');
-            this.fireGeotagged();
-            break;
-          case 'longitude':
-            var deg = Math.floor(neu);
-            var min = Math.floor((neu - deg) * 60);
-            var sec = Math.floor((neu - deg - min) * 3600);
-            self.geo.longitude = '' + deg + '°' + min + '′' + sec + '″' + (neu != -neu ? 'W' : 'E');
-            this.fireGeotagged();
-            break;
-          case 'altitude':
+          case 'gypsy':
+            var value = neu.split(/[,;\-\s]+/);
+            if (value.length > 1 && value[0] == +value[0] && value[1] == +value[1]) { // floats
+              var lla = this.geoData.floats = { lat: +value[0], lon: +value[1], alt: +(value.length > 2 ? value[2] : 0) };
+              this.geoData.strings = {};
+              ['lat', 'lon'].forEach(function(tude) {
+                var deg = Math.floor(lla[tude]);
+                var min = Math.floor((lla[tude] - deg) * 60);
+                var sec = Math.floor((lla[tude] - deg - min) * 3600);
+                self.geoData.strings[tude] = '' + deg + '°' + min + '′' + sec + '″' + (+lla[tude] != -lla[tude] ? 'S' : 'N');
+              });
+            } else {
+              var lla = self.geoData.strings = { lat: value[0], lon: value[1] };
+              this.geoData.floats = {};
+              ['lat', 'lon'].forEach(function(tude) {
+                var v = lla[tude].split(/\D/);
+                self.geoData.floats[tude] = ((v[0] || 0) + (v[1] || 0)/60.0 + (v[2] || 0)/3600.0) *
+                (lla[tude][lla[tude].length - 1].match(/S|W/) ? -1 : 1);
+              });
+            }
             this.fireGeotagged();
             break;
           case 'timestamp':
             if (neu && neu.length) {
               var t = neu.split(' ');
-              this.fireTimestamp(t[0].replace(/[:\/.,]/g, '-'), t[1]);
+              var d = t[0].replace(/[:\/.,]/g, '-');
+              this.timeData = {
+                date: d,
+                time: t[1],
+                datetime: new Date(d + ' ' + t[1])
+              };
+              this.fireTimestamp();
             }
             break;
           case 'caption':
@@ -357,19 +330,28 @@ This is how it looks:
       },
 
       drawCaption: function() {
+        var text = this.format.replace(/\{[cC]\w*?\}/g, this.caption || '')
+                              .replace(/\{[aA]\w*?\}/g, this.address || '')
+                              .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
+                              .replace(/\{[tT]\w*?\}/g, this.timeData.time || '')
+                              .trim();
+
         var ctx = this.masterpiece();
         ctx.translate(this.ctxSize.width, this.ctxSize.height);
         ctx.rotate(- Math.PI / 2);
-        ctx.strokeText(this.caption, this.ctxSize.height - ctx.measureText(this.caption).width - 6, -6);
+        ctx.strokeText(text, this.ctxSize.height - ctx.measureText(text).width - 6, -6);
         ctx.shadowBlur = 0;
-        ctx.fillText(this.caption, this.ctxSize.height - ctx.measureText(this.caption).width - 6, -6);
+        ctx.fillText(text, this.ctxSize.height - ctx.measureText(text).width - 6, -6);
       },
 
       loadAddress: function() {
-        var self = this;
+        if (!this.geoData.floats) {
+          throw "Improper call to loadAddress(). Should set geoData before."
+        }
 
+        var self = this;
         // http://nominatim.openstreetmap.org/reverse?format=json&lat=52.5487429714954&lon=-1.81602098644987&zoom=18&addressdetails=1
-        var nominatim = "http://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + self.latitude + "&lon=" + self.longitude + "&zoom=18&addressdetails=1";
+        var nominatim = "http://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + self.geoData.floats.lat + "&lon=" + self.geoData.floats.lon + "&zoom=18&addressdetails=1";
         var http = new XMLHttpRequest();
         http.open("GET", nominatim, true);
         http.responseType = "json";
@@ -377,7 +359,6 @@ This is how it looks:
         http.onload = function() {
           if (this.status === 200) {
             this.response.time = EXIF.getTag(this, 'GPSDateStamp'); // FIXME
-            self.fireAddress(this.response);
             var address = this.response.address.country || 'World';
             if (this.response.address.city || this.response.address.town) {
               address += ', ' + (this.response.address.city || this.response.address.town);
@@ -386,10 +367,9 @@ This is how it looks:
               address += ', ' + (this.response.address.street || this.response.address.road || this.response.address.pedestrian);
             }
             if (this.response.address.house_number) address += ', ' + this.response.address.house_number;
-            if (self.needTimestamp && self.timestamp) {
-              address += '  ⌚' + self.timestamp;
-            }
-            self.setAttribute('caption', address);
+            self.fireAddress(this.response);
+            self.address = address;
+            self.drawCaption();
           }
         }
         http.send();
@@ -424,7 +404,7 @@ This is how it looks:
                   self.fireExif(EXIF.getAllTags(img));
 
                   // retrieve timestamp from image
-                  self.timestamp = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp');
+                  self.setAttribute('timestamp', EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp'));
 
                   // retrieve geo info from image
                   var lat = EXIF.getTag(this, "GPSLatitude");
@@ -432,9 +412,13 @@ This is how it looks:
                   var alt = EXIF.getTag(this, "GPSAltitude");
 
                   if (lat && lat.constructor === Array && lon && lon.constructor === Array) { // GEO is presented
-                    self.latitude = (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1);
-                    self.longitude = (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1);
-                    self.altitude = ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt;
+                    self.setAttribute(
+                      'gypsy',
+                      [
+                        (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1),
+                        (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1),
+                        ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt
+                      ]);
                   }
 
                   // retrieve comment from image
@@ -470,10 +454,6 @@ This is how it looks:
                     if (result && result.length > 0) {
                       self.description = result;
                     }
-                  }
-
-                  if (self.longitude && self.latitude && self.needGeo && (self.needGeo === true || self.needGeo === 'true' || self.needGeo === 'yes')) { // stamp location
-                    self.loadAddress();
                   }
                   self.setAttribute('autoRedraw', true);
                 });
@@ -613,11 +593,7 @@ This is how it looks:
        *
        * @event mudasobwa-exthen-geotagged
        * @param {Object} detail
-       *   @param {string} detail.lat the latitude.
-       *   @param {string} detail.lon the longitude.
-       *   @param {string} detail.alt the altitude.
-       *   @param {string} detail.latitude the human-readable string for latitude.
-       *   @param {string} detail.longitude the human-readable string for longitude.
+       *   @param {string} detail.geoData the latitude, longitude and altitude in both float and string notation.
        *   @param {string} details.links prepared links to show the place in different map visualizers.
        */
 
@@ -627,25 +603,19 @@ This is how it looks:
        * @method fireGeotagged
        */
       fireGeotagged: function() {
-        if (
-          !self.latitude || self.latitude.constructor !== String ||
-          !self.longitude || self.latitude.constructor !== String ||
-          self.altitude === null
-        ) { // GEO is corrupted
+        if (!this.gypsy || !this.geoData.floats || !this.geoData.strings) { // GEO is missing
           return false;
         }
 
+        var self = this;
         this.fire('mudasobwa-exthen-geotagged', {
-          lat: self.latitude,
-          lon: self.longitude,
-          alt: self.altitude,
-          latitude: self.geo.latitude,
-          longitude: self.geo.longitude,
+          geoData: self.geoData,
           links: {
-            osm: 'https://www.openstreetmap.org/#map=18/' + self.latitude + '/' + self.longitude,
-            google: 'https://www.google.com/maps/place/' + self.geo.latitude + '+' + self.geo.longitude
+            osm: 'https://www.openstreetmap.org/#map=18/' + self.geoData.floats.lat + '/' + self.geoData.floats.lon,
+            google: 'https://www.google.com/maps/place/' + self.geoData.strings.lat + '+' + self.geoData.strings.lon
           }
         });
+        setTimeout(function(self) { self.loadAddress(); }, 100, this);
       },
 
       /**
@@ -663,8 +633,8 @@ This is how it looks:
        *
        * @method fireTimestamp
        */
-      fireTimestamp: function(d, t) {
-        this.fire('mudasobwa-exthen-timestamp', { date: d, time: t, datetime: new Date(d + ' ' + t) });
+      fireTimestamp: function() {
+        this.fire('mudasobwa-exthen-timestamp', this.timeData);
       },
 
       /**
