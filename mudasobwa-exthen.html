@@ -44,11 +44,14 @@ This is how it looks:
 
 @element mudasobwa-exthen
 @blurb Element providing lazy image loading, GEO-tags extracting and more.
-@status alpha
-@homepage http://polymerlabs.github.io/mudasobwa-exthen
+@status beta
+@homepage http://rocket-science.ru/wc/mudasobwa-exthen
 -->
 <polymer-element name="mudasobwa-exthen"
-                 attributes="src geo timestamp comment
+                 attributes="src
+                             latitude longitude altitude timestamp caption description
+                             needGeo needTimestamp needDescription
+                             autoRedraw
                              throbWidth throbHeight throbType throbColor
                              fillFont fillColor fillStroke fillShadow">
 
@@ -58,6 +61,10 @@ This is how it looks:
     <figure>
       <div id="container" style="width:{{ throbWidth }}px;height:{{ throbHeight }}px"></div>
       <figcaption id="caption">
+        <template if="{{ needDescription }}">
+          <p>{{ description }}</p>
+        </template>
+
         <content id="content"></content>
       </figcaption>
     </figure>
@@ -76,43 +83,101 @@ This is how it looks:
       src: null,
 
       /**
-       * `geo` is an attribute that denotes whether GEO should be extracted from
+      * The `latitude` attribute gets/sets a latitude where the photo was taken
+      *
+      * @attribute latitude
+      * @type float
+      */
+      latitude: null,
+
+      /**
+      * The `longitude` attribute gets/sets a longitude where the photo was taken
+      *
+      * @attribute longitude
+      * @type float
+      */
+      longitude: null,
+
+      /**
+      * The `altitude` attribute gets/sets a altitude where the photo was taken
+      *
+      * @attribute altitude
+      * @type float
+      */
+      altitude: null,
+
+      /**
+      * The `timestamp` attribute gets/sets a time when the photo was taken
+      *
+      * @attribute timestamp
+      * @type Date
+      */
+      timestamp: null,
+
+      /**
+      * The `caption` attribute gets/sets the drawn on canvas image caption
+      *
+      * @attribute caption
+      * @type string
+      */
+      caption: null,
+
+      /**
+      * The `description` attribute get/sets the drawn below image description
+      *
+      * @attribute description
+      * @type string
+      */
+      description: null,
+
+      /**
+       * `needGeo` is an attribute that denotes whether GEO should be extracted from
        *       an image and printed on canvas.
        *
-       * @attribute geo
+       * @attribute needGeo
        * @type bool
        * @default true
        */
-      geo: true,
+      needGeo: true,
 
       /**
-       * `timestamp` is an attribute that denotes whether timestamp should be
+       * `needTimestamp` is an attribute that denotes whether needTimestamp should be
        *       extracted from an image and printed on canvas.
        *
-       * @attribute timestamp
+       * @attribute needTimestamp
        * @type bool
        * @default true
        */
-      timestamp: true,
+      needTimestamp: true,
 
       /**
-       * `comment` is an attribute that denotes whether comment should be
+       * `needDescription` is an attribute that denotes whether needDescription should be
        *       extracted from an image and printed inside content tag.
        *
-       * @attribute comment
+       * @attribute needDescription
        * @type bool
        * @default true
        */
-      comment: true,
+      needDescription: true,
 
       /**
-       * `throbber` is a property that holds throbber showing while image is being loaded.
-       *
-       * @property throbber
-       * @type Object
-       * @default null
-       */
+      * `throbber` is a property that holds throbber showing while image is being loaded.
+      *
+      * @property throbber
+      * @type Object
+      * @default null
+      */
       throbber: null,
+
+      /**
+      * `autoRedraw` is an attribute that denotes whether image canvas should
+      *    be automatically updated on every attribute change
+      *
+      * @attribute autoRedraw
+      * @type bool
+      * @default false
+      */
+      autoRedraw: false,
 
       /**
        * `throbType` is an attribute that denotes whether throbber should be drawn
@@ -206,6 +271,130 @@ This is how it looks:
         setTimeout(function(self) { self.loadImg(self.throbber, self.$.container); }, 100, this);
       },
 
+      created: function() {
+        this.ctx = null; // context, sizes etc
+        this.ctxSize = {};
+        this.geo = {};
+      },
+
+      /**
+      * Handler for `attributeChanged` event. Set’s the respective meta.
+      *
+      * @method attributeChanged
+      * @param {string} attr the name of attribute
+      * @param {string} old the old value of the attribute
+      * @param {string} neu the new value of the attribute
+      */
+      attributeChanged: function(attr, old, neu) {
+        switch (attr) {
+          case 'autoRedraw':
+            break;
+          case 'latitude':
+            // 53°20′18″N,37°5′18″E
+            var deg = Math.floor(neu);
+            var min = Math.floor((neu - deg) * 60);
+            var sec = Math.floor((neu - deg - min) * 3600);
+            self.geo.latitude = '' + deg + '°' + min + '′' + sec + '″' + (neu != -neu ? 'S' : 'N');
+            this.fireGeotagged();
+            break;
+          case 'longitude':
+            var deg = Math.floor(neu);
+            var min = Math.floor((neu - deg) * 60);
+            var sec = Math.floor((neu - deg - min) * 3600);
+            self.geo.longitude = '' + deg + '°' + min + '′' + sec + '″' + (neu != -neu ? 'W' : 'E');
+            this.fireGeotagged();
+            break;
+          case 'altitude':
+            this.fireGeotagged();
+            break;
+          case 'timestamp':
+            if (neu && neu.length) {
+              var t = neu.split(' ');
+              this.fireTimestamp(t[0].replace(/[:\/.,]/g, '-'), t[1]);
+            }
+            break;
+          case 'caption':
+            break;
+          case 'description':
+            self.fireDescription();
+            break;
+          default: return false;
+        }
+        if (this.autoRedraw) {
+          this.drawCaption();
+        }
+      },
+
+      masterpiece: function(img, container) {
+        if (this.ctx) {
+          this.ctx.restore();
+        } else if (img && container) {
+          var c = document.createElement('canvas');
+          this.ctxSize = {
+            width:  c.width = img.width,
+            height: c.height = img.height
+          }
+          container.style.width = this.ctxSize.width + 'px';
+          container.style.height = this.ctxSize.height + 'px';
+          this.ctx = c.getContext('2d');
+          this.ctx.drawImage(img, 0, 0);
+          this.ctx.save();
+          container.appendChild(c);
+        }
+
+        if (!this.ctx) {
+          throw "Invalid call to canvas(): the object is not yet prepared"
+        }
+
+        this.ctx.font = this.fillFont;
+        this.ctx.fillStyle = this.fillColor;
+        this.ctx.strokeStyle = this.fillStroke;
+        this.ctx.shadowColor = "black";
+        this.ctx.shadowBlur = this.fillShadow;
+        this.ctx.lineWidth = 1;
+
+        return this.ctx;
+      },
+
+      drawCaption: function() {
+        var ctx = this.masterpiece();
+        ctx.translate(this.ctxSize.width, this.ctxSize.height);
+        ctx.rotate(- Math.PI / 2);
+        ctx.strokeText(this.caption, this.ctxSize.height - ctx.measureText(this.caption).width - 6, -6);
+        ctx.shadowBlur = 0;
+        ctx.fillText(this.caption, this.ctxSize.height - ctx.measureText(this.caption).width - 6, -6);
+      },
+
+      loadAddress: function() {
+        var self = this;
+
+        // http://nominatim.openstreetmap.org/reverse?format=json&lat=52.5487429714954&lon=-1.81602098644987&zoom=18&addressdetails=1
+        var nominatim = "http://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + self.latitude + "&lon=" + self.longitude + "&zoom=18&addressdetails=1";
+        var http = new XMLHttpRequest();
+        http.open("GET", nominatim, true);
+        http.responseType = "json";
+
+        http.onload = function() {
+          if (this.status === 200) {
+            this.response.time = EXIF.getTag(this, 'GPSDateStamp'); // FIXME
+            self.fireAddress(this.response);
+            var address = this.response.address.country || 'World';
+            if (this.response.address.city || this.response.address.town) {
+              address += ', ' + (this.response.address.city || this.response.address.town);
+            }
+            if (this.response.address.street || this.response.address.road || this.response.address.pedestrian) {
+              address += ', ' + (this.response.address.street || this.response.address.road || this.response.address.pedestrian);
+            }
+            if (this.response.address.house_number) address += ', ' + this.response.address.house_number;
+            if (self.needTimestamp && self.timestamp) {
+              address += '  ⌚' + self.timestamp;
+            }
+            self.setAttribute('caption', address);
+          }
+        }
+        http.send();
+      },
+
       /**
        * Huge spaghetti-like codepiece which actually loads an image and fires events.
        *
@@ -229,61 +418,26 @@ This is how it looks:
           if (this.status === 200) {
             img.onload = function() {
                 throbber.stop();
-
-                var c = document.createElement('canvas');
-                container.style.width = (c.width = img.width) + 'px';
-                container.style.height = (c.height = img.height) + 'px';
-                var ctx = c.getContext('2d');
-                ctx.font = self.fillFont;
-                ctx.fillStyle = self.fillColor;
-                ctx.strokeStyle = self.fillStroke;
-                ctx.shadowColor = "black";
-                ctx.shadowBlur = self.fillShadow;
-                ctx.lineWidth = 1;
-                ctx.drawImage(img, 0, 0);
-                container.appendChild(c);
+                var ctx = self.masterpiece(img, container);
 
                 EXIF.getData(img, function() {
                   self.fireExif(EXIF.getAllTags(img));
 
                   // retrieve timestamp from image
-                  var timestampOK = false;
-                  var timestamp = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp');
-                  if (timestamp) {
-                    timestamp = timestamp.split(' ');
-                    var tDate = timestamp[0].replace(/[:\/.,]/g, '-');
-                    var tTime = timestamp[1];
-                    timestamp = tDate;
-                    timestampOK = true;
-                    self.fireTimestamp(tDate, tTime);
-                  }
+                  self.timestamp = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp');
 
-                  // retrieve geolocation from image
-                  var geoOK = false;
+                  // retrieve geo info from image
                   var lat = EXIF.getTag(this, "GPSLatitude");
                   var lon = EXIF.getTag(this, "GPSLongitude");
                   var alt = EXIF.getTag(this, "GPSAltitude");
 
                   if (lat && lat.constructor === Array && lon && lon.constructor === Array) { // GEO is presented
-                    var sth = ('S' == EXIF.getTag(this, "GPSLatitudeRef"));
-                    var wst = ('W' == EXIF.getTag(this, "GPSLongitudeRef"));
-
-                    // 53°20′18″N,37°5′18″E
-                    var latitude = '' + lat[0] + '°' + lat[1] + '′' + lat[2] + '″' + (sth ? 'S' : 'N');
-                    lat = lat[0] + lat[1]/60.0 + lat[2]/3600.0;
-                    if (sth) { lat = -lat; }
-                    var longitude = '' + lon[0] + '°' + lon[1] + '′' + lon[2] + '″' + (wst ? 'W' : 'E');
-                    lon = lon[0] + lon[1]/60.0 + lon[2]/3600.0;
-                    if (wst) { lon = -lon; }
-
-                    if (alt && '1' == EXIF.getTag(this, "GPSAltitudeRef")) { alt = -alt; }
-
-                    geoOK = true;
-                    self.fireGeotagged(lat, lon, alt, latitude, longitude);
+                    self.latitude = (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1);
+                    self.longitude = (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1);
+                    self.altitude = ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt;
                   }
 
                   // retrieve comment from image
-                  var commentOK = false;
                   var comment = EXIF.getTag(this, 'ImageDescription');
 
                   if (comment && comment.length > 0) { // byte array ⇒ utf8
@@ -314,64 +468,14 @@ This is how it looks:
                     }
 
                     if (result && result.length > 0) {
-                      comment = result;
-                      commentOK = true;
-                      self.fireComment(comment);
+                      self.description = result;
                     }
-                  } else if (self.$.content.children.length === 0) {
-                    self.$.caption.style.display = 'none';
                   }
 
-                  var needTimestamp = (timestampOK && self.timestamp && (self.timestamp === true || self.timestamp === 'true' || self.timestamp === 'yes'));
-
-                  if (geoOK && self.geo && (self.geo === true || self.geo === 'true' || self.geo === 'yes')) { // stamp location
-                    // http://nominatim.openstreetmap.org/reverse?format=json&lat=52.5487429714954&lon=-1.81602098644987&zoom=18&addressdetails=1
-                    var nominatim = "http://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + lat + "&lon=" + lon + "&zoom=18&addressdetails=1";
-                    var http = new XMLHttpRequest();
-                    http.open("GET", nominatim, true);
-                    http.responseType = "json";
-
-                    http.onload = function() {
-                      if (this.status === 200) {
-                        this.response.time = EXIF.getTag(this, 'GPSDateStamp');
-                        self.fireAddress(this.response);
-                        var address = this.response.address.country || 'World';
-                        if (this.response.address.city || this.response.address.town) {
-                          address += ', ' + (this.response.address.city || this.response.address.town);
-                        }
-                        if (this.response.address.street || this.response.address.road || this.response.address.pedestrian) {
-                          address += ', ' + (this.response.address.street || this.response.address.road || this.response.address.pedestrian);
-                        }
-                        if (this.response.address.house_number) address += ', ' + this.response.address.house_number;
-
-                        if (needTimestamp) {
-                          address += '  ⌚' + timestamp;
-                        }
-                        ctx.save();
-                        ctx.translate(c.width, c.height);
-                        ctx.rotate(- Math.PI / 2);
-                        ctx.strokeText(address, c.height - ctx.measureText(address).width - 6, -6);
-                        ctx.shadowBlur = 0;
-                        ctx.fillText(address, c.height - ctx.measureText(address).width - 6, -6);
-                        ctx.restore();
-                      }
-                    };
-                    http.send();
-                  } else if (needTimestamp) {
-                    ctx.save();
-                    ctx.translate(c.width, c.height);
-                    ctx.rotate(- Math.PI / 2);
-                    ctx.strokeText('  ⌚' + timestamp, c.height - ctx.measureText(address).width - 6, -6);
-                    ctx.fillText('  ⌚' + timestamp, c.height - ctx.measureText(address).width - 6, -6);
-                    ctx.restore();
+                  if (self.longitude && self.latitude && self.needGeo && (self.needGeo === true || self.needGeo === 'true' || self.needGeo === 'yes')) { // stamp location
+                    self.loadAddress();
                   }
-
-                  if (commentOK && self.comment && (self.comment === true || self.comment === 'true' || self.comment === 'yes')) { // show user comment from EXIF
-                    var p = document.createElement('p');
-                    p.appendChild(document.createTextNode(comment));
-                    self.$.caption.appendChild(p);
-                  }
-
+                  self.setAttribute('autoRedraw', true);
                 });
             };
             img.src = URL.createObjectURL(http.response);
@@ -522,13 +626,24 @@ This is how it looks:
        *
        * @method fireGeotagged
        */
-      fireGeotagged: function(lat, lon, alt, latitude, longitude) {
+      fireGeotagged: function() {
+        if (
+          !self.latitude || self.latitude.constructor !== String ||
+          !self.longitude || self.latitude.constructor !== String ||
+          self.altitude === null
+        ) { // GEO is corrupted
+          return false;
+        }
+
         this.fire('mudasobwa-exthen-geotagged', {
-          lat: lat, lon: lon, alt: alt,
-          latitude: latitude, longitude: longitude,
+          lat: self.latitude,
+          lon: self.longitude,
+          alt: self.altitude,
+          latitude: self.geo.latitude,
+          longitude: self.geo.longitude,
           links: {
-            osm: 'https://www.openstreetmap.org/#map=18/' + lat + '/' + lon,
-            google: 'https://www.google.com/maps/place/' + latitude + '+' + longitude
+            osm: 'https://www.openstreetmap.org/#map=18/' + self.latitude + '/' + self.longitude,
+            google: 'https://www.google.com/maps/place/' + self.geo.latitude + '+' + self.geo.longitude
           }
         });
       },
@@ -562,12 +677,15 @@ This is how it looks:
        */
 
       /**
-       * The `fireComment` method will fire the `mudasobwa-exthen-comment` event
+       * The `fireDescription` method will fire the `mudasobwa-exthen-description` event
        *
-       * @method fireComment
+       * @method fireDescription
        */
-      fireComment: function(comment) {
-        this.fire('mudasobwa-exthen-comment', { comment: comment });
+      fireDescription: function() {
+        var text = thie.description;
+        if (text && text.length) {
+          this.fire('mudasobwa-exthen-description', { text: text });
+        }
       }
 
     });

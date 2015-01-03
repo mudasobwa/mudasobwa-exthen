@@ -20,7 +20,7 @@
 
 <table><thead><tr><th>Original image</th><th>With GEO/Date printed on canvas</th></tr></thead>
 <tr><td valign='top'>
-  <mudasobwa-exthen throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg" geo='false' timestamp='false'>Комментарий к картинке можно написать руками.</mudasobwa-exthen>
+  <mudasobwa-exthen throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg" needGeo='false' needTimestamp='false'>Комментарий к картинке можно написать руками.</mudasobwa-exthen>
 </td><td valign='top'>
   <mudasobwa-exthen throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg"></mudasobwa-exthen>
 </td></tr></table>
@@ -29,7 +29,10 @@
   document.addEventListener('mudasobwa-exthen-address', function(e) {
     console.log(e.type, e.detail);
   });
-  document.addEventListener('mudasobwa-exthen-comment', function(e) {
+  document.addEventListener('mudasobwa-exthen-description', function(e) {
+    console.log(e.type, e.detail);
+  });
+  document.addEventListener('mudasobwa-exthen-geotagged', function(e) {
     console.log(e.type, e.detail);
   });
   document.addEventListener('mudasobwa-exthen-timestamp', function(e) {
