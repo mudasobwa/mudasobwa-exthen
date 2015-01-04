@@ -224,16 +224,18 @@ This is how it looks:
        * @method ready
        */
       ready: function() {
-        // More info: http://www.polymer-project.org/docs/polymer/polymer.html#lifecyclemethods
-        this.throbber = new this.Throbber(this.$.container, this.throbType, this.throbColor);
-
+        if (!this.throbber) {
+          this.throbber = new this.Throbber(this.$.container, this.throbType, this.throbColor);
+        } else {
+          this.throbber = null;
+        }
         // pass control to the main thread to avoid lock on image loading
-        setTimeout(function(self) { self.loadImg(self.throbber, self.$.container); }, 100, this);
+        setTimeout(function(self) { self.loadImg(); }, 100, this);
       },
 
       created: function() {
-        this.ctx = null; // context, sizes etc
-        this.ctxSize = {};
+        this.image = null;
+        this.canvas = null;
         this.geoData = {};
         this.timeData = {};
         this.address = null;
@@ -250,6 +252,9 @@ This is how it looks:
       attributeChanged: function(attr, old, neu) {
         var self = this;
         switch (attr) {
+          case 'src':
+            this.ready();
+            break;
           case 'autoRedraw':
             break;
           case 'gypsy':
@@ -260,7 +265,7 @@ This is how it looks:
               ['lat', 'lon'].forEach(function(tude) {
                 var deg = Math.floor(lla[tude]);
                 var min = Math.floor((lla[tude] - deg) * 60);
-                var sec = Math.floor((lla[tude] - deg - min) * 3600);
+                var sec = Math.floor(((lla[tude] - deg) * 60 - min) * 60);
                 self.geoData.strings[tude] = '' + deg + '°' + min + '′' + sec + '″' + (+lla[tude] != -lla[tude] ? 'S' : 'N');
               });
             } else {
@@ -269,7 +274,7 @@ This is how it looks:
               ['lat', 'lon'].forEach(function(tude) {
                 var v = lla[tude].split(/\D/);
                 self.geoData.floats[tude] = ((v[0] || 0) + (v[1] || 0)/60.0 + (v[2] || 0)/3600.0) *
-                (lla[tude][lla[tude].length - 1].match(/S|W/) ? -1 : 1);
+                                             (lla[tude][lla[tude].length - 1].match(/S|W/) ? -1 : 1);
               });
             }
             this.fireGeotagged();
@@ -298,35 +303,33 @@ This is how it looks:
         }
       },
 
-      masterpiece: function(img, container) {
-        if (this.ctx) {
-          this.ctx.restore();
-        } else if (img && container) {
-          var c = document.createElement('canvas');
-          this.ctxSize = {
-            width:  c.width = img.width,
-            height: c.height = img.height
-          }
-          container.style.width = this.ctxSize.width + 'px';
-          container.style.height = this.ctxSize.height + 'px';
-          this.ctx = c.getContext('2d');
-          this.ctx.drawImage(img, 0, 0);
-          this.ctx.save();
-          container.appendChild(c);
+      masterpiece: function() {
+        if(!this.image) {
+          throw "Illegal call to masterpiece(): image is not yet loaded and/or container is not defined";
         }
 
-        if (!this.ctx) {
-          throw "Invalid call to canvas(): the object is not yet prepared"
+        var container = this.$.container;
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
         }
 
-        this.ctx.font = this.fillFont;
-        this.ctx.fillStyle = this.fillColor;
-        this.ctx.strokeStyle = this.fillStroke;
-        this.ctx.shadowColor = "black";
-        this.ctx.shadowBlur = this.fillShadow;
-        this.ctx.lineWidth = 1;
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = this.image.width;
+        this.canvas.height = this.image.height;
+        container.style.width = this.canvas.width + 'px';
+        container.style.height = this.canvas.height + 'px';
+        container.appendChild(this.canvas);
 
-        return this.ctx;
+        var ctx = this.canvas.getContext('2d');
+        ctx.drawImage(this.image, 0, 0);
+        ctx.font = this.fillFont;
+        ctx.fillStyle = this.fillColor;
+        ctx.strokeStyle = this.fillStroke;
+        ctx.shadowColor = "black";
+        ctx.shadowBlur = this.fillShadow;
+        ctx.lineWidth = 1;
+
+        return ctx;
       },
 
       drawCaption: function() {
@@ -335,13 +338,12 @@ This is how it looks:
                               .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
                               .replace(/\{[tT]\w*?\}/g, this.timeData.time || '')
                               .trim();
-
         var ctx = this.masterpiece();
-        ctx.translate(this.ctxSize.width, this.ctxSize.height);
+        ctx.translate(this.canvas.width, this.canvas.height);
         ctx.rotate(- Math.PI / 2);
-        ctx.strokeText(text, this.ctxSize.height - ctx.measureText(text).width - 6, -6);
+        ctx.strokeText(text, this.canvas.height - ctx.measureText(text).width - 6, -6);
         ctx.shadowBlur = 0;
-        ctx.fillText(text, this.ctxSize.height - ctx.measureText(text).width - 6, -6);
+        ctx.fillText(text, this.canvas.height - ctx.measureText(text).width - 6, -6);
       },
 
       loadAddress: function() {
@@ -359,7 +361,7 @@ This is how it looks:
         http.onload = function() {
           if (this.status === 200) {
             this.response.time = EXIF.getTag(this, 'GPSDateStamp'); // FIXME
-            var address = this.response.address.country || 'World';
+            var address = this.response.address.country || this.response.address.address100 || 'World';
             if (this.response.address.city || this.response.address.town) {
               address += ', ' + (this.response.address.city || this.response.address.town);
             }
@@ -379,86 +381,83 @@ This is how it looks:
        * Huge spaghetti-like codepiece which actually loads an image and fires events.
        *
        * @method loadImg
-       * @param {Object} the throbber handler (to call `stop()` on when the actual image is loaded)
-       * @param {Object} container to draw canvas for image on
        */
-      loadImg: function(throbber, container) {
+      loadImg: function() {
         if (!this.src) {
-          console.warn("Mandatory src attribute is not set within mudasobwa-exthen id#" + this.id);
-          return false;
+          throw "Mandatory src attribute is not set within mudasobwa-exthen id#" + (this.id || 'unknown');
         }
 
         var self = this;
-        var img = new Image();
         var http = new XMLHttpRequest();
         http.open("GET", this.src, true);
         http.responseType = "blob";
 
         http.onload = function() {
+          self.image = new Image();
           if (this.status === 200) {
-            img.onload = function() {
-                throbber.stop();
-                var ctx = self.masterpiece(img, container);
+            self.image.onload = function() {
+              if (self.throbber) {
+                self.throbber.stop();
+              }
+              EXIF.getData(self.image, function() {
+                self.fireExif(EXIF.getAllTags(self.image));
 
-                EXIF.getData(img, function() {
-                  self.fireExif(EXIF.getAllTags(img));
+                // retrieve timestamp from image
+                self.setAttribute('timestamp', EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp'));
 
-                  // retrieve timestamp from image
-                  self.setAttribute('timestamp', EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp'));
+                // retrieve geo info from image
+                var lat = EXIF.getTag(this, "GPSLatitude");
+                var lon = EXIF.getTag(this, "GPSLongitude");
+                var alt = EXIF.getTag(this, "GPSAltitude");
 
-                  // retrieve geo info from image
-                  var lat = EXIF.getTag(this, "GPSLatitude");
-                  var lon = EXIF.getTag(this, "GPSLongitude");
-                  var alt = EXIF.getTag(this, "GPSAltitude");
+                if (lat && lat.constructor === Array && lon && lon.constructor === Array) { // GEO is presented
+                  self.setAttribute(
+                    'gypsy',
+                    [
+                      (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1),
+                      (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1),
+                      ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt
+                    ]);
+                }
 
-                  if (lat && lat.constructor === Array && lon && lon.constructor === Array) { // GEO is presented
-                    self.setAttribute(
-                      'gypsy',
-                      [
-                        (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1),
-                        (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1),
-                        ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt
-                      ]);
-                  }
+                // retrieve comment from image
+                var comment = EXIF.getTag(this, 'ImageDescription');
 
-                  // retrieve comment from image
-                  var comment = EXIF.getTag(this, 'ImageDescription');
+                if (comment && comment.length > 0) { // byte array ⇒ utf8
+                  var i = 0;
+                  var c0 = c1 = c2 = c3 = 0;
+                  var result = '';
 
-                  if (comment && comment.length > 0) { // byte array ⇒ utf8
-                    var i = 0;
-                    var c0 = c1 = c2 = c3 = 0;
-                    var result = '';
+                  while( i < comment.length ) {
+                    c0 = comment.charCodeAt(i)&0xff;
 
-                    while( i < comment.length ) {
-                      c0 = comment.charCodeAt(i)&0xff;
-
-                      if( c0 < 128 ) {
-                        result += String.fromCharCode(c0);
-                        i++;
-                      } else if( (c0 > 191) && (c0 < 224) ) {
-                        if( i+1 >= comment.length )
-                            throw "Bad UTF-8 content in ImageDescription. Skipping...";
-                        c2 = comment.charCodeAt(i+1)&0xff;
-                        result += String.fromCharCode( ((c0&31)<<6) | (c2&63) );
-                        i+=2;
-                      } else {
-                        if( i+2 >= comment.length  || i+1 >= comment.length )
-                            throw "Bad UTF-8 content in ImageDescription. Skipping...";
-                        c2 = comment.charCodeAt(i+1)&0xff;
-                        c3 = comment.charCodeAt(i+2)&0xff;
-                        result += String.fromCharCode( ((c0&15)<<12) | ((c2&63)<<6) | (c3&63) );
-                        i+=3;
-                      }
-                    }
-
-                    if (result && result.length > 0) {
-                      self.description = result;
+                    if( c0 < 128 ) {
+                      result += String.fromCharCode(c0);
+                      i++;
+                    } else if( (c0 > 191) && (c0 < 224) ) {
+                      if( i+1 >= comment.length )
+                          throw "Bad UTF-8 content in ImageDescription. Skipping...";
+                      c2 = comment.charCodeAt(i+1)&0xff;
+                      result += String.fromCharCode( ((c0&31)<<6) | (c2&63) );
+                      i+=2;
+                    } else {
+                      if( i+2 >= comment.length  || i+1 >= comment.length )
+                          throw "Bad UTF-8 content in ImageDescription. Skipping...";
+                      c2 = comment.charCodeAt(i+1)&0xff;
+                      c3 = comment.charCodeAt(i+2)&0xff;
+                      result += String.fromCharCode( ((c0&15)<<12) | ((c2&63)<<6) | (c3&63) );
+                      i+=3;
                     }
                   }
-                  self.setAttribute('autoRedraw', true);
-                });
+
+                  if (result && result.length > 0) {
+                    self.setAttribute('description', result);
+                  }
+                }
+                self.drawCaption();
+              });
             };
-            img.src = URL.createObjectURL(http.response);
+            self.image.src = URL.createObjectURL(http.response);
           }
         };
         http.send();

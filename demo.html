@@ -20,15 +20,17 @@
 
 <table><thead><tr><th>Original image</th><th>With GEO/Date printed on canvas</th></tr></thead>
 <tr><td valign='top'>
-  <mudasobwa-exthen throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg"></mudasobwa-exthen>
+  <mudasobwa-exthen id='fst' throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg"></mudasobwa-exthen>
 </td><td valign='top'>
-  <mudasobwa-exthen throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg" format='«{c}»' caption='Hi, I’m caption'>Комментарий к картинке можно написать руками.</mudasobwa-exthen>
+  <mudasobwa-exthen id='snd' throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg" format='«{c}»' caption='Hi, I’m caption'>Комментарий к картинке можно написать руками.</mudasobwa-exthen>
 </td></tr></table>
 
 <script>
   document.addEventListener('mudasobwa-exthen-exif', function(e) {
     console.log(e.type, e.detail);
   });
+  setTimeout(function(self) { self.setAttribute('gypsy', '41.3,3.9,2'); }, 1500, document.getElementById('fst'));
+  setTimeout(function(self) { self.setAttribute('src', 'i/2.jpg'); }, 3000, document.getElementById('snd'));
 </script>
 </body>
 </html>
