@@ -1,5 +1,7 @@
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../mudasobwa-nominatim/mudasobwa-nominatim.html">
 <script src="../exif-js/exif.js"></script>
+
 
 <!--
 Web component provides easy handling of GEO-tagged images.
@@ -48,12 +50,14 @@ This is how it looks:
                  attributes="src
                              gypsy timestamp caption description
                              format
-                             autoRedraw
+                             autoRedraw autoAddress
                              throbWidth throbHeight throbType throbColor
                              fillFont fillColor fillStroke fillShadow">
 
   <template>
     <link rel="stylesheet" href="mudasobwa-exthen.css" />
+
+    <mudasobwa-nominatim id="nominatim" on-mudasobwa-nominatim-response="{{ gotAddress }}"></mudasobwa-nominatim>
 
     <figure>
       <div id="container" style="width:{{ throbWidth }}px;height:{{ throbHeight }}px"></div>
@@ -92,9 +96,9 @@ This is how it looks:
       *
       * @attribute format
       * @type string
-      * @default '{caption} ✉ {address} ⌚ {date}'
+      * @default '✎ {caption} ✉ {address} ⌚ {date} '
       */
-      format: '{caption} ✉ {address} ⌚ {date}',
+      format: '✎ {caption} ✉ {address} ⌚ {date} ',
 
       /**
       * The `timestamp` attribute gets/sets a time when the photo was taken
@@ -138,6 +142,16 @@ This is how it looks:
       * @default false
       */
       autoRedraw: false,
+
+      /**
+      * `autoAddress` is an attribute that denotes whether the nominatim
+      *     service should be called automatically to retrieve the address by geo
+      *
+      * @attribute autoAddress
+      * @type bool
+      * @default false
+      */
+      autoAddress: false,
 
       /**
        * `throbType` is an attribute that denotes whether throbber should be drawn
@@ -278,6 +292,9 @@ This is how it looks:
               });
             }
             this.fireGeotagged();
+            if(this.autoAddress) {
+              setTimeout(function(self) { self.loadAddress(); }, 100, this);
+            }
             break;
           case 'timestamp':
             if (neu && neu.length) {
@@ -337,6 +354,7 @@ This is how it looks:
                               .replace(/\{[aA]\w*?\}/g, this.address || '')
                               .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
                               .replace(/\{[tT]\w*?\}/g, this.timeData.time || '')
+                              .replace(/[^\p{S}]  /g, '')
                               .trim();
         var ctx = this.masterpiece();
         ctx.translate(this.canvas.width, this.canvas.height);
@@ -346,35 +364,20 @@ This is how it looks:
         ctx.fillText(text, this.canvas.height - ctx.measureText(text).width - 6, -6);
       },
 
+      gotAddress: function(e) {
+        this.address = e.detail.address;
+        this.fireAddress(e.detail);
+        this.drawCaption();
+      },
+
       loadAddress: function() {
         if (!this.geoData.floats) {
           throw "Improper call to loadAddress(). Should set geoData before."
         }
 
-        var self = this;
-        // http://nominatim.openstreetmap.org/reverse?format=json&lat=52.5487429714954&lon=-1.81602098644987&zoom=18&addressdetails=1
-        var nominatim = "http://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&lat=" + self.geoData.floats.lat + "&lon=" + self.geoData.floats.lon + "&zoom=18&addressdetails=1";
-        var http = new XMLHttpRequest();
-        http.open("GET", nominatim, true);
-        http.responseType = "json";
-
-        http.onload = function() {
-          if (this.status === 200) {
-            this.response.time = EXIF.getTag(this, 'GPSDateStamp'); // FIXME
-            var address = this.response.address.country || this.response.address.address100 || 'World';
-            if (this.response.address.city || this.response.address.town) {
-              address += ', ' + (this.response.address.city || this.response.address.town);
-            }
-            if (this.response.address.street || this.response.address.road || this.response.address.pedestrian) {
-              address += ', ' + (this.response.address.street || this.response.address.road || this.response.address.pedestrian);
-            }
-            if (this.response.address.house_number) address += ', ' + this.response.address.house_number;
-            self.fireAddress(this.response);
-            self.address = address;
-            self.drawCaption();
-          }
-        }
-        http.send();
+        this.$.nominatim.latitude = this.geoData.floats.lat;
+        this.$.nominatim.longitude = this.geoData.floats.lon;
+        this.$.nominatim.go();
       },
 
       /**
@@ -415,7 +418,7 @@ This is how it looks:
                     'gypsy',
                     [
                       (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1),
-                      (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1),
+                      (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('W' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1),
                       ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt
                     ]);
                 }
@@ -581,8 +584,7 @@ This is how it looks:
             type: response.osm_type,
             place: response.place_id,
             license: response.license
-          },
-          time: response.time
+          }
         });
       },
 
@@ -614,7 +616,6 @@ This is how it looks:
             google: 'https://www.google.com/maps/place/' + self.geoData.strings.lat + '+' + self.geoData.strings.lon
           }
         });
-        setTimeout(function(self) { self.loadAddress(); }, 100, this);
       },
 
       /**
@@ -651,7 +652,7 @@ This is how it looks:
        * @method fireDescription
        */
       fireDescription: function() {
-        var text = thie.description;
+        var text = this.description;
         if (text && text.length) {
           this.fire('mudasobwa-exthen-description', { text: text });
         }

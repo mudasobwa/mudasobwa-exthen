@@ -1,7 +1,7 @@
 mudasobwa-exthen
 ================
 
-See the [component page](http://mudasobwa.github.io/wc/mudasobwa-exthen) for more information.
+See the [component page](http://rocket-science.ru/wc/mudasobwa-exthen) for more information.
 
 ## Getting Started
 

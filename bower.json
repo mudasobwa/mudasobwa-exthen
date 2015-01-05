@@ -11,7 +11,8 @@
   "main": "mudasobwa-exthen.html",
   "dependencies": {
     "polymer": "Polymer/polymer#^0.5.1",
-    "exif-js": "jseidelin/exif-js"
+    "exif-js": "jseidelin/exif-js",
+    "mudasobwa-nominatim": "mudasobwa/mudasobwa-nominatim#master"
   },
   "devDependencies": {
     "web-component-tester": "Polymer/web-component-tester#^2.0.0"
