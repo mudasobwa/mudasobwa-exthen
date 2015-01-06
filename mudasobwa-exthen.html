@@ -59,6 +59,9 @@ This is how it looks:
 
     <mudasobwa-nominatim id="nominatim" on-mudasobwa-nominatim-response="{{ gotAddress }}"></mudasobwa-nominatim>
 
+    <template if="{{ anchor }}">
+      <a id="{{ anchor }}"></a>
+    </template>
     <figure>
       <div id="container" style="width:{{ throbWidth }}px;height:{{ throbHeight }}px"></div>
       <figcaption id="caption">
@@ -132,6 +135,23 @@ This is how it looks:
       * @default null
       */
       throbber: null,
+
+      /**
+       * `orientation` is a property that denotes an image orientation
+       *
+       * @property orientation
+       * @type integer
+       * @default 1
+       */
+      orientation: 1,
+
+      /**
+       * `anchor` is an attribute for anchor
+       *
+       * @attribute anchor
+       * @type string
+       */
+      anchor: null,
 
       /**
       * `autoRedraw` is an attribute that denotes whether image canvas should
@@ -247,6 +267,9 @@ This is how it looks:
         setTimeout(function(self) { self.loadImg(); }, 100, this);
       },
 
+      /**
+       * Default handler for `created` polymer event
+       */
       created: function() {
         this.image = null;
         this.canvas = null;
@@ -316,29 +339,68 @@ This is how it looks:
           default: return false;
         }
         if (this.autoRedraw) {
-          this.drawCaption();
+          this.draw();
         }
       },
 
+      /**
+       *  Draws canvas.
+       *
+       *      Value	0th Row	0th Column
+       *      1	top	left side
+       *      2	top	right side
+       *      3	bottom	right side
+       *      4	bottom	left side
+       *      5	left side	top
+       *      6	right side	top
+       *      7	right side	bottom
+       *      8	left side	bottom
+       */
       masterpiece: function() {
         if(!this.image) {
           throw "Illegal call to masterpiece(): image is not yet loaded and/or container is not defined";
         }
 
+        var w = this.image.width;
+        var h = this.image.height;
+        var a = 0;
+
+        switch (this.orientation) { // FIXME Might it be in [2..5]?
+          case 6:
+            w = this.image.height;
+            h = this.image.width;
+            a = Math.PI / 2.0;
+            break;
+          case 7:
+            a = Math.PI;
+            break;
+          case 8:
+            w = this.image.height;
+            h = this.image.width;
+            a = 3.0 * Math.PI / 2.0;
+            break;
+        }
         var container = this.$.container;
         while (container.firstChild) {
           container.removeChild(container.firstChild);
         }
 
         this.canvas = document.createElement('canvas');
-        this.canvas.width = this.image.width;
-        this.canvas.height = this.image.height;
-        container.style.width = this.canvas.width + 'px';
-        container.style.height = this.canvas.height + 'px';
+        container.style.width = (this.canvas.width = w) + 'px';
+        container.style.height = (this.canvas.height = h) + 'px';
         container.appendChild(this.canvas);
 
         var ctx = this.canvas.getContext('2d');
-        ctx.drawImage(this.image, 0, 0);
+        if (a != 0) {
+          ctx.save();
+          ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+          ctx.rotate(a);
+          ctx.drawImage(this.image, -this.canvas.height / 2, -this.canvas.width / 2);
+          ctx.restore();
+        } else {
+          ctx.drawImage(this.image, 0, 0);
+        }
+
         ctx.font = this.fillFont;
         ctx.fillStyle = this.fillColor;
         ctx.strokeStyle = this.fillStroke;
@@ -349,7 +411,10 @@ This is how it looks:
         return ctx;
       },
 
-      drawCaption: function() {
+      /**
+       * Draws caption on canvas.
+       */
+      draw: function() {
         var text = this.format.replace(/\{[cC]\w*?\}/g, this.caption || '')
                               .replace(/\{[aA]\w*?\}/g, this.address || '')
                               .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
@@ -364,10 +429,13 @@ This is how it looks:
         ctx.fillText(text, this.canvas.height - ctx.measureText(text).width - 6, -6);
       },
 
+      /**
+       * Default handler for the event when an address is got from nominatim service.
+       */
       gotAddress: function(e) {
         this.address = e.detail.address;
         this.fireAddress(e.detail);
-        this.drawCaption();
+        this.draw();
       },
 
       loadAddress: function() {
@@ -405,9 +473,6 @@ This is how it looks:
               EXIF.getData(self.image, function() {
                 self.fireExif(EXIF.getAllTags(self.image));
 
-                // retrieve timestamp from image
-                self.setAttribute('timestamp', EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp'));
-
                 // retrieve geo info from image
                 var lat = EXIF.getTag(this, "GPSLatitude");
                 var lon = EXIF.getTag(this, "GPSLongitude");
@@ -422,6 +487,9 @@ This is how it looks:
                       ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt
                     ]);
                 }
+
+                // retrieve timestamp from image
+                self.setAttribute('timestamp', EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp'));
 
                 // retrieve comment from image
                 var comment = EXIF.getTag(this, 'ImageDescription');
@@ -457,10 +525,12 @@ This is how it looks:
                     self.setAttribute('description', result);
                   }
                 }
-                self.drawCaption();
+                self.orientation = +EXIF.getTag(this, "Orientation");
+                self.draw();
               });
             };
             self.image.src = URL.createObjectURL(http.response);
+            self.anchor = 'img_' + self.image.src.replace(/[\\\/\-\s%:;,.]/g, '_');
           }
         };
         http.send();
@@ -549,9 +619,13 @@ This is how it looks:
        * The `fireExif` method will fire the `mudasobwa-exthen-exif` event
        *
        * @method fireExif
+       * @param tags {json}
        */
       fireExif: function(tags) {
-        this.fire('mudasobwa-exthen-exif', { tags: tags });
+        this.fire('mudasobwa-exthen-exif', {
+          image: this.image,
+          tags: tags
+        });
       },
 
       /**
@@ -570,20 +644,21 @@ This is how it looks:
        * The `fireAddress` method will fire the `mudasobwa-exthen-address` event
        *
        * @method fireAddress
+       * @param data {json}
        */
-      fireAddress: function(response) {
+      fireAddress: function(data) {
         this.fire('mudasobwa-exthen-address', {
-          address: response.address,
-          display: response.display_name,
-          geo: {
-            lat: response.lat,
-            lon: response.lon
-          },
+          image: this.image,
+          orientation: this.orientation,
+          geo: this.geoData.floats,
+          location: data.response.address,
+          address: data.address,
+          display: data.response.display_name,
           osm: {
-            id: response.osm_id,
-            type: response.osm_type,
-            place: response.place_id,
-            license: response.license
+            id: data.response.osm_id,
+            type: data.response.osm_type,
+            place: data.response.place_id,
+            license: data.response.license
           }
         });
       },
@@ -608,12 +683,13 @@ This is how it looks:
           return false;
         }
 
-        var self = this;
         this.fire('mudasobwa-exthen-geotagged', {
-          geoData: self.geoData,
+          image: this.image,
+          orientation: this.orientation,
+          geoData: this.geoData,
           links: {
-            osm: 'https://www.openstreetmap.org/#map=18/' + self.geoData.floats.lat + '/' + self.geoData.floats.lon,
-            google: 'https://www.google.com/maps/place/' + self.geoData.strings.lat + '+' + self.geoData.strings.lon
+            osm: 'https://www.openstreetmap.org/#map=18/' + this.geoData.floats.lat + '/' + this.geoData.floats.lon,
+            google: 'https://www.google.com/maps/place/' + this.geoData.strings.lat + '+' + this.geoData.strings.lon
           }
         });
       },
@@ -652,10 +728,7 @@ This is how it looks:
        * @method fireDescription
        */
       fireDescription: function() {
-        var text = this.description;
-        if (text && text.length) {
-          this.fire('mudasobwa-exthen-description', { text: text });
-        }
+        this.fire('mudasobwa-exthen-description', { text: this.description });
       }
 
     });
