@@ -1,6 +1,6 @@
 {
   "name": "mudasobwa-exthen",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "keywords": [
     "seed",
     "polymer",
@@ -10,7 +10,8 @@
   ],
   "main": "mudasobwa-exthen.html",
   "dependencies": {
-    "polymer": "Polymer/polymer#^0.5.1",
+    "polymer": "Polymer/polymer#master",
+    "paper-input": "Polymer/paper-input#master",
     "exif-js": "jseidelin/exif-js",
     "mudasobwa-nominatim": "mudasobwa/mudasobwa-nominatim#master"
   },

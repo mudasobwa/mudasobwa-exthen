@@ -6,6 +6,7 @@
   <title>mudasobwa-exthen demo</title>
 
   <script src="../webcomponentsjs/webcomponents.js"></script>
+  <link rel="import" href="../paper-input/paper-input.html">
   <link rel="import" href="mudasobwa-exthen.html">
 
 </head>
@@ -18,22 +19,97 @@
     &lt;/mudasobwa-exthen>
   </pre></code>
 
-<table><thead><tr><th>Original image</th><th>With GEO/Date printed on canvas</th></tr></thead>
-<tr><td valign='top'>
-  <mudasobwa-exthen id='fst' throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg" autoAddress></mudasobwa-exthen>
-</td><td valign='top'>
-  <mudasobwa-exthen id='snd' throbwidth="800" throbheight="763" throbcolor="[0,0,128]" src="i/1.jpg" autoAddress format='«{c} ⌛{t}»' caption='Hi, I’m caption'>Комментарий к картинке можно написать руками.</mudasobwa-exthen>
-</td></tr></table>
+  <h2>Image with GEO/Date/Caption printed on canvas</h2>
+
+  <polymer-element name="gypsy-converter" attributes="gypsy lat lon reverse" hidden>
+    <template>
+      <style>
+      :host { display: none; }
+      </style>
+    </template>
+
+    <script>
+      Polymer('gypsy-converter', {
+        reverse: false,
+        gypsyChanged: function() {
+          if (this.reverse || !this.gypsy) { return; }
+          var ll = this.gypsy.constructor === Array ? this.gypsy : this.gypsy.split(/[,;\-\s]+/);
+          if (ll.constructor === Array && ll.length >= 2) {
+            this.lat = ll[0];
+            this.lon = ll[1];
+            this.reverse = true;
+          }
+        },
+        latlonChanged: function() {
+          if (!this.reverse || !this.lat || this.lat.length <= 0 || !this.lon || this.lon.length <= 0) { return; }
+          this.gypsy = this.lat + ',' + this.lon;
+        },
+        latChanged: function() { this.latlonChanged(); },
+        lonChanged: function() { this.latlonChanged(); }
+      });
+    </script>
+</polymer-element>
+
+<polymer-element name="mudasobwa-exthen-demo" attributes="format caption">
+  <template>
+    <style>
+      aside > paper-input { width: 200px; }
+    </style>
+    <aside style="float:left;width:200px;">
+      <paper-input id="cap" label="Caption" floatinglabel value="{{ caption }}"></paper-input><br><br>
+      <paper-input id="fmt" label="Format" floatinglabel value="{{ format }}"></paper-input><br><br>
+
+      <gypsy-converter gypsy="{{ gypsy }}" lat="{{ latitude }}" lon="{{ longitude }}"></gypsy-converter>
+      <paper-input id="lat" label="Latitude" floatinglabel value="{{ latitude }}"></paper-input><br>
+      <paper-input id="lon" label="Longitude" floatinglabel value="{{ longitude }}"></paper-input>
+      <paper-input id="addr" label="Address (r/o)" floatinglabel disabled></paper-input><br><br>
+
+      <p>Feel free to try to adjust format (placeholders <code>{c}</code>, <code>{a}</code>,
+        <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for <em>caption</em>,
+        <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.)</p>
+      <p>You might try to change the lat/long and the changes will be drawn on image canvas.
+        This would not change an image itself anyhow. This is convenient for drawing geodata
+        on images from non-gps-enabled cameras with geo-track. See <code>mudasobwa-gypsy-tricker</code>
+        component for further details.</p>
+    </aside>
+    <main style="margin-left:220px;">
+      <mudasobwa-exthen id="exthen" autoAddress gypsy="{{ gypsy }}"
+                        src="i/1.jpg" caption="{{ caption }}" format="{{ format }}"
+                        throbwidth="800" throbheight="763" throbcolor="[0,0,128]"
+                        on-mudasobwa-exthen-address="{{ onAddress }}">
+          <p>Comment is written by hand. <em>HTML</em> <b>is</b> of course <a href='#'>allowed</a>.</p>
+      </mudasobwa-exthen>
+    </main>
+  </template>
+  <script>
+    Polymer('mudasobwa-exthen-demo', {
+      onAddress: function(e) {
+        this.$.addr.value = e.detail.address;
+      }
+    });
+  </script>
+</polymer-element>
 
 <script>
+document.addEventListener('polymer-ready', function(e) {
+  var escogido = function(selector) {
+    if (selector.constructor === Array) {
+      return selector.map(function(el) { return escogido(el); });
+    }
+    return document.querySelector('#main').content.querySelector(selector);
+  }
+
   document.addEventListener('mudasobwa-exthen-exif', function(e) {
     console.log(e.type, e.detail);
   });
   document.addEventListener('mudasobwa-exthen-geotagged', function(e) {
     console.log(e.type, e.detail);
   });
-  setTimeout(function(self) { self.setAttribute('gypsy', '41.3,3.9,2'); }, 1500, document.getElementById('fst'));
-  setTimeout(function(self) { self.setAttribute('src', 'i/2.jpg'); }, 3000, document.getElementById('snd'));
+});
 </script>
+
+
+<mudasobwa-exthen-demo format="{c} ✉ {a} [{g}] ⌛ {t}" caption="“Hi, I’m caption”">
+</mudasobwa-exthen-demo>
 </body>
 </html>

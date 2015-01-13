@@ -297,6 +297,10 @@ This is how it looks:
         this.drawIfNeeded();
       },
 
+      captionChanged: function() {
+        this.drawIfNeeded();
+      },
+
       autoAddressChanged: function() {
         var wasRedrawn = this.autoRedraw;
         if (!wasRedrawn) {
@@ -365,6 +369,10 @@ This is how it looks:
         this.drawIfNeeded();
       },
 
+      formatChanged: function() {
+        this.drawIfNeeded();
+      },
+
       /**
       * Handler for `attributeChanged` event. Set’s the respective meta.
       *
@@ -374,7 +382,9 @@ This is how it looks:
       * @param {string} neu the new value of the attribute
       */
       attributeChanged: function(attr, old, neu) {
-        // console.log('attributeChanged [' + attr + ']');
+        // if (attr === 'gypsy' && old !== neu) {
+          console.log(this.gypsy, attr, old, neu);
+        // }
       },
 
       /**
@@ -462,8 +472,8 @@ This is how it looks:
         // the latter replace cleans up empties
         var text = this.format.replace(/\{[cC]\w*?\}/g, this.caption || '')
                               .replace(/\{[aA]\w*?\}/g, this.address || '')
-                              .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
                               .replace(/\{[gG]\w*?\}/g, this.geoData.pretty || '')
+                              .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
                               .replace(/\{[tT]\w*?\}/g, this.timeData.time || '')
                               .replace(/[^\p{S}]  /g, '')
                               .trim();
