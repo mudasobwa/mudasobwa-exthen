@@ -48,8 +48,8 @@ This is how it looks:
 -->
 <polymer-element name="mudasobwa-exthen"
                  attributes="src
-                             gypsy timestamp caption description
-                             format
+                             format gypsy caption
+                             timestamp description
                              autoRedraw autoAddress
                              throbWidth throbHeight throbType throbColor
                              fillFont fillColor fillStroke fillShadow">
@@ -57,7 +57,9 @@ This is how it looks:
   <template>
     <link rel="stylesheet" href="mudasobwa-exthen.css" />
 
-    <mudasobwa-nominatim id="nominatim" on-mudasobwa-nominatim-response="{{ gotAddress }}"></mudasobwa-nominatim>
+    <mudasobwa-nominatim id="nominatim"
+                         on-mudasobwa-nominatim-response="{{ gotAddress }}">
+    </mudasobwa-nominatim>
 
     <template if="{{ anchor }}">
       <a id="{{ anchor }}"></a>
@@ -218,7 +220,7 @@ This is how it looks:
        * @type string
        * @default '12px Ubuntu, Verdana, Arial, sans-serif'
        */
-      fillFont: '14px Ubuntu, Verdana, Arial, sans-serif',
+      fillFont: '12px Ubuntu, Verdana, Arial, sans-serif',
 
       /**
        * `fillColor` is an attribute that denotes color css for text,
@@ -264,7 +266,7 @@ This is how it looks:
           this.throbber = null;
         }
         // pass control to the main thread to avoid lock on image loading
-        setTimeout(function(self) { self.loadImg(); }, 100, this);
+        setTimeout(function(self) { self.loadImg(); }, 10, this);
       },
 
       /**
@@ -273,9 +275,94 @@ This is how it looks:
       created: function() {
         this.image = null;
         this.canvas = null;
+        this.gypsy = null;
         this.geoData = {};
-        this.timeData = {};
         this.address = null;
+        this.timestamp = null;
+        this.timeData = {};
+      },
+
+      drawIfNeeded: function() {
+        if (this.autoRedraw) {
+          this.draw();
+        }
+      },
+
+      srcChanged: function() {
+        this.created();
+        this.ready();
+      },
+
+      autoRedrawChanged: function() {
+        this.drawIfNeeded();
+      },
+
+      autoAddressChanged: function() {
+        var wasRedrawn = this.autoRedraw;
+        if (!wasRedrawn) {
+          this.autoRedraw = true;
+          this.drawIfNeeded();
+        }
+      },
+
+      gypsyChanged: function() {
+        if (!this.gypsy) { return; }
+        var self = this;
+        var value = this.gypsy.constructor === Array ? this.gypsy : this.gypsy.split(/[,;\-\s]+/);
+        if (value.length > 1 && value[0] == +value[0] && value[1] == +value[1]) { // floats
+          var lla = this.geoData.floats = { lat: +value[0], lon: +value[1], alt: +(value.length > 2 ? value[2] : 0) };
+          this.geoData.strings = {};
+          var hemispheres = { lat: ['N','S'], lon: ['E','W'] };
+          ['lat', 'lon'].forEach(function(tude) {
+            var deg = Math.floor(lla[tude]);
+            var min = Math.floor((lla[tude] - deg) * 60);
+            var sec = Math.floor(((lla[tude] - deg) * 60 - min) * 60);
+            self.geoData.strings[tude] = '' + deg + '°' + min + '′' + sec + '″' + hemispheres[tude][+(+lla[tude] != -lla[tude])];
+          });
+        } else {
+          var lla = self.geoData.strings = { lat: value[0], lon: value[1] };
+          this.geoData.floats = {};
+          ['lat', 'lon'].forEach(function(tude) {
+            var v = lla[tude].split(/\D/);
+            self.geoData.floats[tude] = ((v[0] || 0) + (v[1] || 0)/60.0 + (v[2] || 0)/3600.0) *
+            (lla[tude][lla[tude].length - 1].match(/S|W/) ? -1 : 1);
+          });
+        }
+        this.geoData.pretty = this.geoData.strings.lat + ',' + this.geoData.strings.lon;
+
+        ['lat', 'lon'].forEach(function(tude) {
+          if (self.geoData.floats[tude] < -90.0 || self.geoData.floats[tude] > 90.0) {
+            throw 'Irrelevant geolocation: [' + tude + '=' + self.geoData.floats[tude] + ']. Geodata is corrupted.';
+          }
+        });
+
+        this.fireGeotagged();
+        if(this.autoAddress) {
+          setTimeout(function(self) { self.loadAddress(); }, 10, this);
+        } else {
+          this.drawIfNeeded();
+        }
+      },
+
+      timestampChanged: function() {
+        if (this.timestamp && this.timestamp.length) {
+          var t = this.timestamp.split(/\s+/);
+          var d = t[0].replace(/[:\/.,]/g, '-');
+          this.timeData = {
+            date: d,
+            time: t[1],
+            datetime: new Date(d + ' ' + t[1])
+          };
+        } else {
+          this.timeData = {};
+        }
+        this.fireTimestamp();
+        this.drawIfNeeded();
+      },
+
+      descriptionChanged: function() {
+        this.fireDescription();
+        this.drawIfNeeded();
       },
 
       /**
@@ -287,64 +374,13 @@ This is how it looks:
       * @param {string} neu the new value of the attribute
       */
       attributeChanged: function(attr, old, neu) {
-        var self = this;
-        switch (attr) {
-          case 'src':
-            this.ready();
-            break;
-          case 'autoRedraw':
-            break;
-          case 'gypsy':
-            var value = neu.split(/[,;\-\s]+/);
-            if (value.length > 1 && value[0] == +value[0] && value[1] == +value[1]) { // floats
-              var lla = this.geoData.floats = { lat: +value[0], lon: +value[1], alt: +(value.length > 2 ? value[2] : 0) };
-              this.geoData.strings = {};
-              ['lat', 'lon'].forEach(function(tude) {
-                var deg = Math.floor(lla[tude]);
-                var min = Math.floor((lla[tude] - deg) * 60);
-                var sec = Math.floor(((lla[tude] - deg) * 60 - min) * 60);
-                self.geoData.strings[tude] = '' + deg + '°' + min + '′' + sec + '″' + (+lla[tude] != -lla[tude] ? 'S' : 'N');
-              });
-            } else {
-              var lla = self.geoData.strings = { lat: value[0], lon: value[1] };
-              this.geoData.floats = {};
-              ['lat', 'lon'].forEach(function(tude) {
-                var v = lla[tude].split(/\D/);
-                self.geoData.floats[tude] = ((v[0] || 0) + (v[1] || 0)/60.0 + (v[2] || 0)/3600.0) *
-                                             (lla[tude][lla[tude].length - 1].match(/S|W/) ? -1 : 1);
-              });
-            }
-            this.fireGeotagged();
-            if(this.autoAddress) {
-              setTimeout(function(self) { self.loadAddress(); }, 100, this);
-            }
-            break;
-          case 'timestamp':
-            if (neu && neu.length) {
-              var t = neu.split(' ');
-              var d = t[0].replace(/[:\/.,]/g, '-');
-              this.timeData = {
-                date: d,
-                time: t[1],
-                datetime: new Date(d + ' ' + t[1])
-              };
-              this.fireTimestamp();
-            }
-            break;
-          case 'caption':
-            break;
-          case 'description':
-            self.fireDescription();
-            break;
-          default: return false;
-        }
-        if (this.autoRedraw) {
-          this.draw();
-        }
+        // console.log('attributeChanged [' + attr + ']');
       },
 
       /**
        *  Draws canvas.
+       *
+       *  http://www.daveperrett.com/articles/2012/07/28/exif-orientation-handling-is-a-ghetto/
        *
        *      Value	0th Row	0th Column
        *      1	top	left side
@@ -355,41 +391,48 @@ This is how it looks:
        *      6	right side	top
        *      7	right side	bottom
        *      8	left side	bottom
+       *
+       *  @todo currently we do not handle mirroring
        */
       masterpiece: function() {
         if(!this.image) {
-          throw "Illegal call to masterpiece(): image is not yet loaded and/or container is not defined";
+          // We are not yet ready to redraw. No worry.
+          return false;
         }
 
         var w = this.image.width;
         var h = this.image.height;
         var a = 0;
 
-        switch (this.orientation) { // FIXME Might it be in [2..5]?
+        switch (this.orientation) {
+          case 3:
+            a = Math.PI;
+            break;
           case 6:
             w = this.image.height;
             h = this.image.width;
             a = Math.PI / 2.0;
             break;
-          case 7:
-            a = Math.PI;
-            break;
           case 8:
             w = this.image.height;
             h = this.image.width;
-            a = 3.0 * Math.PI / 2.0;
+            a = - Math.PI / 2.0;
             break;
         }
+
+        // clear previous canvases
         var container = this.$.container;
         while (container.firstChild) {
           container.removeChild(container.firstChild);
         }
 
+        // create canvas
         this.canvas = document.createElement('canvas');
         container.style.width = (this.canvas.width = w) + 'px';
         container.style.height = (this.canvas.height = h) + 'px';
         container.appendChild(this.canvas);
 
+        // draw image with proper orientation
         var ctx = this.canvas.getContext('2d');
         if (a != 0) {
           ctx.save();
@@ -401,6 +444,7 @@ This is how it looks:
           ctx.drawImage(this.image, 0, 0);
         }
 
+        // prepare settings for the future
         ctx.font = this.fillFont;
         ctx.fillStyle = this.fillColor;
         ctx.strokeStyle = this.fillStroke;
@@ -415,13 +459,18 @@ This is how it looks:
        * Draws caption on canvas.
        */
       draw: function() {
+        // the latter replace cleans up empties
         var text = this.format.replace(/\{[cC]\w*?\}/g, this.caption || '')
                               .replace(/\{[aA]\w*?\}/g, this.address || '')
                               .replace(/\{[dD]\w*?\}/g, this.timeData.date || '')
+                              .replace(/\{[gG]\w*?\}/g, this.geoData.pretty || '')
                               .replace(/\{[tT]\w*?\}/g, this.timeData.time || '')
                               .replace(/[^\p{S}]  /g, '')
                               .trim();
         var ctx = this.masterpiece();
+        if (!ctx) { // we are not yet ready
+          return false;
+        }
         ctx.translate(this.canvas.width, this.canvas.height);
         ctx.rotate(- Math.PI / 2);
         ctx.strokeText(text, this.canvas.height - ctx.measureText(text).width - 6, -6);
@@ -435,7 +484,7 @@ This is how it looks:
       gotAddress: function(e) {
         this.address = e.detail.address;
         this.fireAddress(e.detail);
-        this.draw();
+        this.drawIfNeeded();
       },
 
       loadAddress: function() {
@@ -473,23 +522,25 @@ This is how it looks:
               EXIF.getData(self.image, function() {
                 self.fireExif(EXIF.getAllTags(self.image));
 
+                var wasRedrawn = self.autoRedraw;
+                self.autoRedraw = false;
+
                 // retrieve geo info from image
                 var lat = EXIF.getTag(this, "GPSLatitude");
                 var lon = EXIF.getTag(this, "GPSLongitude");
                 var alt = EXIF.getTag(this, "GPSAltitude");
 
                 if (lat && lat.constructor === Array && lon && lon.constructor === Array) { // GEO is presented
-                  self.setAttribute(
-                    'gypsy',
+                  self.gypsy =
                     [
                       (lat[0] + lat[1]/60.0 + lat[2]/3600.0) * ('S' == EXIF.getTag(this, "GPSLatitudeRef") ? -1 : 1),
                       (lon[0] + lon[1]/60.0 + lon[2]/3600.0) * ('W' == EXIF.getTag(this, "GPSLongitudeRef") ? -1 : 1),
                       ('1' == EXIF.getTag(this, "GPSAltitudeRef")) ? -alt : +alt
-                    ]);
+                    ];
                 }
 
                 // retrieve timestamp from image
-                self.setAttribute('timestamp', EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp'));
+                self.timestamp = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'GPSDateStamp');
 
                 // retrieve comment from image
                 var comment = EXIF.getTag(this, 'ImageDescription');
@@ -522,11 +573,11 @@ This is how it looks:
                   }
 
                   if (result && result.length > 0) {
-                    self.setAttribute('description', result);
+                    self.description = result;
                   }
                 }
                 self.orientation = +EXIF.getTag(this, "Orientation");
-                self.draw();
+                self.autoRedraw = wasRedrawn;
               });
             };
             self.image.src = URL.createObjectURL(http.response);
