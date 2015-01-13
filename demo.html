@@ -54,6 +54,7 @@
   <template>
     <style>
       aside > paper-input { width: 200px; }
+      aside > p { font-size: smaller; font-family: Ubuntu, sans-serif; }
     </style>
     <aside style="float:left;width:200px;">
       <paper-input id="cap" label="Caption" floatinglabel value="{{ caption }}"></paper-input><br><br>
@@ -68,9 +69,9 @@
         <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for <em>caption</em>,
         <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.)</p>
       <p>You might try to change the lat/long and the changes will be drawn on image canvas.
-        This would not change an image itself anyhow. This is convenient for drawing geodata
-        on images from non-gps-enabled cameras with geo-track. See <code>mudasobwa-gypsy-tricker</code>
-        component for further details.</p>
+        The change would not affect the image itself anyhow. This is convenient for drawing geodata
+        on images from non-geo-enabled cameras provided the gps-track in KML/GPX format is supplied.
+        See <code>mudasobwa-gypsy-tricker</code> component for further details.</p>
     </aside>
     <main style="margin-left:220px;">
       <mudasobwa-exthen id="exthen" autoAddress gypsy="{{ gypsy }}"

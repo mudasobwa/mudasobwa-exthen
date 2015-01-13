@@ -266,7 +266,7 @@ This is how it looks:
           this.throbber = null;
         }
         // pass control to the main thread to avoid lock on image loading
-        setTimeout(function(self) { self.loadImg(); }, 10, this);
+        this.async(function() { this.loadImg(); }, null, 10);
       },
 
       /**
@@ -342,7 +342,7 @@ This is how it looks:
 
         this.fireGeotagged();
         if(this.autoAddress) {
-          setTimeout(function(self) { self.loadAddress(); }, 10, this);
+          this.async(function() { this.loadAddress(); }, null, 10);
         } else {
           this.drawIfNeeded();
         }
