@@ -6,20 +6,68 @@
   <title>mudasobwa-exthen demo</title>
 
   <script src="../webcomponentsjs/webcomponents.js"></script>
+  <link rel="import" href="../core-icons/core-icons.html">
+  <link rel="import" href="../core-toolbar/core-toolbar.html">
+  <link rel="import" href="../core-media-query/core-media-query.html">
+  <link rel="import" href="../paper-icon-button/paper-icon-button.html">
   <link rel="import" href="../paper-input/paper-input.html">
+  <link rel="import" href="../code-explainer/code-explainer.html">
   <link rel="import" href="mudasobwa-exthen.html">
+
+  <style>
+    * { margin: 0; padding: 0;}
+    core-toolbar {
+      color: #f1f1f1;
+      fill: #f1f1f1;
+    }
+    body { max-width: 1200px; margin: auto; }
+  </style>
 
 </head>
 <body unresolved>
-  <h2>mudasobwa-exthen</h2>
-  <code><pre>
-    &lt;mudasobwa-exthen
-            throbwidth="800" throbheight="763" throbcolor="[0,0,128]"
-            src="i/1.jpg">
-    &lt;/mudasobwa-exthen>
-  </pre></code>
 
-  <h2>Image with GEO/Date/Caption printed on canvas</h2>
+  <core-toolbar style="background: black;">
+    <paper-icon-button icon="menu"></paper-icon-button>
+    <span flex>mudasobwa-exthen</span>
+    <paper-icon-button icon="refresh"></paper-icon-button>
+    <paper-icon-button icon="more-vert"></paper-icon-button>
+  </core-toolbar>
+
+  <code-explainer label="Image with GEO/Date/Caption printed on canvas">
+    <template>
+      <script type="text/template">
+        <mudasobwa-exthen [start-imgsrc]src="i/1.jpg"[end-imgsrc]
+            autoAddress
+            [start-throbber]throbwidth="800" throbheight="763" throbcolor="[0,0,128]"[end-throbber]
+            [start-tuning]caption="{{ caption }}" format="{{ format }}"[end-tuning]
+            on-mudasobwa-exthen-address="{{ onAddress }}"
+        >
+        </mudasobwa-exthen>
+      </script>
+      <script>
+        Polymer('mudasobwa-exthen-demo', {
+          [start-onaddress]onAddress[end-onaddress]: function(e) {
+            console.log(e.detail.address);
+          }
+        });
+      </script>
+    </template>
+    <code-explainer-info sec="imgsrc" label="Original image source">
+      Has the same meaning as <code>src</code> attribute of standard HTML <code>img</code> tag.
+    </code-explainer-info>
+    <code-explainer-info sec="throbber" label="Configure throbber">
+      The image will be loaded asynchronously, with a throbber shown while loading.
+    </code-explainer-info>
+    <code-explainer-info sec="tuning" label="Configure on-image caption">
+      The caption showing where and when the photo was taken. The string will be formatted
+      according to <code>format</code> parameter. Placeholders <code>{c}</code>, <code>{a}</code>,
+      <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for inserting
+      <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.
+    </code-explainer-info>
+    <code-explainer-info sec="onaddress" label="Handle reverse geocoding">
+      One might handle reverse geocoding response manually.
+    </code-explainer-info>
+  </code-explainer>
 
   <polymer-element name="gypsy-converter" attributes="gypsy lat lon reverse" hidden>
     <template>
@@ -48,69 +96,81 @@
         lonChanged: function() { this.latlonChanged(); }
       });
     </script>
-</polymer-element>
+  </polymer-element>
 
-<polymer-element name="mudasobwa-exthen-demo" attributes="format caption">
-  <template>
-    <style>
-      aside > paper-input { width: 200px; }
-      aside > p { font-size: smaller; font-family: Ubuntu, sans-serif; }
-    </style>
-    <aside style="float:left;width:200px;">
-      <paper-input id="cap" label="Caption" floatinglabel value="{{ caption }}"></paper-input><br><br>
-      <paper-input id="fmt" label="Format" floatinglabel value="{{ format }}"></paper-input><br><br>
+  <polymer-element name="mudasobwa-exthen-demo" attributes="format caption">
+    <template>
+      <style>
+        article { margin: 20px; }
+        aside { float: left; min-width: 240px; max-width: 300px; }
+        main { margin-left: 320px; }
+        aside > * { width: 240px; font-size: smaller; font-family: Ubuntu, sans-serif; }
+      </style>
+      <article>
+        <header><h2>Demo</h2></header>
+        <aside>
+          <paper-input id="cap" label="Caption" floatinglabel value="{{ caption }}"></paper-input><br><br>
+          <paper-input id="fmt" label="Format" floatinglabel value="{{ format }}"></paper-input><br><br>
 
-      <gypsy-converter gypsy="{{ gypsy }}" lat="{{ latitude }}" lon="{{ longitude }}"></gypsy-converter>
-      <paper-input id="lat" label="Latitude" floatinglabel value="{{ latitude }}"></paper-input><br>
-      <paper-input id="lon" label="Longitude" floatinglabel value="{{ longitude }}"></paper-input>
-      <paper-input id="addr" label="Address (r/o)" floatinglabel disabled></paper-input><br><br>
+          <gypsy-converter gypsy="{{ gypsy }}" lat="{{ latitude }}" lon="{{ longitude }}"></gypsy-converter>
+          <paper-input id="lat" label="Latitude" floatinglabel value="{{ latitude }}"></paper-input><br>
+          <paper-input id="lon" label="Longitude" floatinglabel value="{{ longitude }}"></paper-input><br>
+          <paper-input id="addr" label="Address (r/o)" floatinglabel disabled></paper-input><br><br>
 
-      <p>Feel free to try to adjust format (placeholders <code>{c}</code>, <code>{a}</code>,
-        <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for <em>caption</em>,
-        <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.)</p>
-      <p>You might try to change the lat/long and the changes will be drawn on image canvas.
-        The change would not affect the image itself anyhow. This is convenient for drawing geodata
-        on images from non-geo-enabled cameras provided the gps-track in KML/GPX format is supplied.
-        See <code>mudasobwa-gypsy-tricker</code> component for further details.</p>
-    </aside>
-    <main style="margin-left:220px;">
-      <mudasobwa-exthen id="exthen" autoAddress gypsy="{{ gypsy }}"
-                        src="i/1.jpg" caption="{{ caption }}" format="{{ format }}"
-                        throbwidth="800" throbheight="763" throbcolor="[0,0,128]"
-                        on-mudasobwa-exthen-address="{{ onAddress }}">
-          <p>Comment is written by hand. <em>HTML</em> <b>is</b> of course <a href='#'>allowed</a>.</p>
-      </mudasobwa-exthen>
-    </main>
-  </template>
+          <p>Feel free to try to adjust format (placeholders <code>{c}</code>, <code>{a}</code>,
+            <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for <em>format</em>,
+            <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.)</p>
+          <p>You might try to change the lat/long and the changes will be drawn on image canvas.
+            The change would not affect the image itself anyhow. This is convenient for drawing geodata
+            on images from non-geo-enabled cameras provided the gps-track in KML/GPX format is supplied.
+            See <code>mudasobwa-gypsy-tricker</code> component for further details.</p>
+          <p>The address field above is not editable since it’s what we received from OSM reverse
+            geocoding service.</p>
+          <p>Open a console (<code>F12</code>) and see the EXIF and address logged.</p>
+        </aside>
+        <main>
+          <mudasobwa-exthen id="exthen" autoAddress gypsy="{{ gypsy }}"
+                            src="i/1.jpg" caption="{{ caption }}" format="{{ format }}"
+                            throbwidth="800" throbheight="763" throbcolor="[0,0,128]"
+                            on-mudasobwa-exthen-address="{{ onAddress }}">
+              <p>Comment is written by hand. <em>HTML</em> <b>is</b> of course <a href='#'>allowed</a>.</p>
+          </mudasobwa-exthen>
+        </main>
+      </article>
+    </template>
+    <script>
+      Polymer('mudasobwa-exthen-demo', {
+        onAddress: function(e) {
+          this.$.addr.value = e.detail.address;
+        }
+      });
+    </script>
+  </polymer-element>
+
   <script>
-    Polymer('mudasobwa-exthen-demo', {
-      onAddress: function(e) {
-        this.$.addr.value = e.detail.address;
+    document.addEventListener('polymer-ready', function(e) {
+      var escogido = function(selector) {
+        if (selector.constructor === Array) {
+          return selector.map(function(el) { return escogido(el); });
+        }
+        return document.querySelector('#main').content.querySelector(selector);
       }
+
+      document.querySelector('#mediaQuery').addEventListener('core-media-change', function(e) {
+        document.body.classList.toggle('core-narrow', e.detail.matches);
+      });
+
+      document.addEventListener('mudasobwa-exthen-exif', function(e) {
+        console.log(e.type, e.detail);
+      });
+      document.addEventListener('mudasobwa-exthen-geotagged', function(e) {
+        console.log(e.type, e.detail);
+      });
     });
   </script>
-</polymer-element>
 
-<script>
-document.addEventListener('polymer-ready', function(e) {
-  var escogido = function(selector) {
-    if (selector.constructor === Array) {
-      return selector.map(function(el) { return escogido(el); });
-    }
-    return document.querySelector('#main').content.querySelector(selector);
-  }
+  <core-media-query id="mediaQuery" query="max-width: 800px"></core-media-query>
+  <mudasobwa-exthen-demo format="{c} ✉ {a} [{g}] ⌛ {t}" caption="“Hi, I’m caption”"></mudasobwa-exthen-demo>
 
-  document.addEventListener('mudasobwa-exthen-exif', function(e) {
-    console.log(e.type, e.detail);
-  });
-  document.addEventListener('mudasobwa-exthen-geotagged', function(e) {
-    console.log(e.type, e.detail);
-  });
-});
-</script>
-
-
-<mudasobwa-exthen-demo format="{c} ✉ {a} [{g}] ⌛ {t}" caption="“Hi, I’m caption”">
-</mudasobwa-exthen-demo>
 </body>
 </html>

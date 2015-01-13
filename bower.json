@@ -10,8 +10,12 @@
   ],
   "main": "mudasobwa-exthen.html",
   "dependencies": {
-    "polymer": "Polymer/polymer#master",
-    "paper-input": "Polymer/paper-input#master",
+    "polymer": "Polymer/polymer#~0.5.2",
+    "core-toolbar": "Polymer/core-toolbar#~0.5.2",
+    "code-explainer": "Polymer/code-explainer#~0.5.2",
+    "paper-icon-button": "Polymer/paper-icon-button#~0.5.2",
+    "core-media-query": "Polymer/core-media-query#~0.5.2",
+    "paper-input": "Polymer/paper-input#~0.5.2",
     "exif-js": "jseidelin/exif-js",
     "mudasobwa-nominatim": "mudasobwa/mudasobwa-nominatim#master"
   },
