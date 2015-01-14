@@ -26,7 +26,7 @@
 </head>
 <body unresolved>
 
-  <core-toolbar style="background: black;">
+  <core-toolbar style="background: #595a70;">
     <paper-icon-button icon="menu"></paper-icon-button>
     <span flex>mudasobwa-exthen</span>
     <paper-icon-button icon="refresh"></paper-icon-button>
@@ -61,7 +61,7 @@
     <code-explainer-info sec="tuning" label="Configure on-image caption">
       The caption showing where and when the photo was taken. The string will be formatted
       according to <code>format</code> parameter. Placeholders <code>{c}</code>, <code>{a}</code>,
-      <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for inserting
+      <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for inserting <em>caption</em>,
       <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.
     </code-explainer-info>
     <code-explainer-info sec="onaddress" label="Handle reverse geocoding">
@@ -118,7 +118,7 @@
           <paper-input id="addr" label="Address (r/o)" floatinglabel disabled></paper-input><br><br>
 
           <p>Feel free to try to adjust format (placeholders <code>{c}</code>, <code>{a}</code>,
-            <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for <em>format</em>,
+            <code>{g}</code>, <code>{d}</code>, <code>{t}</code> are allowed for <em>caption</em>,
             <em>address</em>, <em>geodata</em>, <em>date</em>, <em>time</em> respectively.)</p>
           <p>You might try to change the lat/long and the changes will be drawn on image canvas.
             The change would not affect the image itself anyhow. This is convenient for drawing geodata
