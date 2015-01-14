@@ -260,13 +260,6 @@ This is how it looks:
        * @method ready
        */
       ready: function() {
-        if (!this.throbber) {
-          this.throbber = new this.Throbber(this.$.container, this.throbType, this.throbColor);
-        } else {
-          this.throbber = null;
-        }
-        // pass control to the main thread to avoid lock on image loading
-        this.async(function() { this.loadImg(); }, null, 10);
       },
 
       /**
@@ -290,7 +283,13 @@ This is how it looks:
 
       srcChanged: function() {
         this.created();
-        this.ready();
+        if (!this.throbber) {
+          this.throbber = new this.Throbber(this.$.container, this.throbType, this.throbColor);
+        } else {
+          this.throbber = null;
+        }
+        // pass control to the main thread to avoid lock on image loading
+        this.async(function() { this.loadImg(); }, null, 10);
       },
 
       autoRedrawChanged: function() {
@@ -684,6 +683,7 @@ This is how it looks:
        */
       fireExif: function(tags) {
         this.fire('mudasobwa-exthen-exif', {
+          src: this.src,
           image: this.image,
           tags: tags
         });
