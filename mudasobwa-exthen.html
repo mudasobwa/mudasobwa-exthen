@@ -48,7 +48,7 @@ This is how it looks:
 -->
 <polymer-element name="mudasobwa-exthen"
                  attributes="src
-                             format gypsy caption
+                             format gypsy caption sizes
                              timestamp description
                              autoRedraw autoAddress
                              throbWidth throbHeight throbType throbColor
@@ -74,10 +74,17 @@ This is how it looks:
         <content id="content"></content>
       </figcaption>
     </figure>
-
   </template>
 
   <script>
+    PolymerExpressions.prototype.elementSize = function(el) {
+      var result = { w: 0, h: 0 };
+      for (ch in el) {
+        result.w += el[ch].offsetWidth;
+        result.h += el[ch].offsetHeight;
+      }
+      return result;
+    };
 
     Polymer({
       /**
@@ -252,6 +259,11 @@ This is how it looks:
        * @default 7
        */
       fillShadow: 7,
+
+      publish: { updated: { value: false, reflect: true } },
+      computed: {
+        sizes: 'elementSize($, updated)'
+      },
 
       /**
        * Standard `ready` handler. Creates throbber and passes control back to
@@ -461,6 +473,7 @@ This is how it looks:
         ctx.shadowBlur = this.fillShadow;
         ctx.lineWidth = 1;
 
+        this.updated = !this.updated;
         return ctx;
       },
 
